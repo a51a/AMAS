@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+.pytest_cache/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# Local data: recordings, frames, databases, exports. Never commit personal data.
+data/*
+!data/.gitkeep
+*.sqlite
+*.sqlite3
+*.db
+*.mp4
+*.mov
+*.MOV
+*.m4v
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
