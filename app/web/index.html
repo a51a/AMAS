@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AMAS Control Center</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="layout">
+    <nav class="side" id="nav">
+      <div class="brand">AMAS</div>
+      <div class="tag">Your attention. Your algorithms. Your rules.</div>
+      <div class="sect">Workspace</div>
+      <a href="#/" data-nav="home">Experiments</a>
+      <a href="#/profiles" data-nav="profiles">Profiles</a>
+      <div id="nav-exp"></div>
+      <div class="sect">Local only</div>
+      <div class="muted" style="padding:0 8px;font-size:12px">No platform credentials. Data stays on this computer.</div>
+    </nav>
+    <main id="view"><p class="muted">Loading…</p></main>
+  </div>
+  <div class="tooltip" id="tooltip"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
