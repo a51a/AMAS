@@ -64,3 +64,36 @@ at 1 fps; background jobs are on the roadmap if real recordings prove slow.
 
 ## D-012 · Python 3.12 target
 `pyproject.toml` requires ≥3.12 and tests ran on 3.12. Uses `enum.StrEnum`.
+
+## D-013 · Shared state and independent review (2026-11-26)
+AGENTS.md owns shared responsibilities and working agreements; CLAUDE.md links to it.
+ROADMAP.md remains the canonical shared status and backlog. The independent review and
+engineering handoff are in testing-reports/2026-11-26/PR-001.md. No product redesign was adopted during
+onboarding; implementation proposals remain review tasks for Claude Code.
+
+## D-014 · BASELINE-001 privacy and provisional evidence (2026-11-26)
+The founder explicitly chose to keep all images on-device. Local FFmpeg and macOS Vision
+may produce research evidence; no image inspection by remote models is authorized.
+Private recording paths, hashes, OCR, frames, observations, and detailed metrics stay in
+ignored data/. Existing SQLite observations and amas-export-v1 are reused, with research
+provenance sidecars. Scripts do not alter product code. Automatic boundaries and uncalibrated
+topic suggestions remain provisional until reviewed; UNKNOWN is preserved. The original
+recording is read-only to the research workflow and verified by checksum before/after.
+
+## D-015 · Canonical local project and report directory (2026-11-26)
+At the founder's request the working checkout and local data were relocated into the
+existing lab/AMAS project folder, alongside the original capture. Git history, branch, and
+uncommitted work were preserved. `testing-reports/README.md` is the report index; dated
+engineering reviews live below testing-reports/, and private evidence below its ignored
+private/ subdirectory. Existing review text was moved, not duplicated. The original capture
+was not moved or modified. The previous workspace contains only a relocation pointer.
+
+## D-016 · Claude Code cloud, Codex local research (2026-11-26)
+The founder requested that Claude Code work in the cloud. GitHub branches and PRs are the
+shared delivery mechanism for instructions, engineering reviews, code and public-safe test
+reports. Claude uses its cloud repository checkout; the local lab/AMAS directory remains
+Codex's artifact home. This supersedes any instruction requiring cloud Claude to access
+that local directory. Raw recordings, frames, OCR, per-account exports and private reports
+remain on-device and Git-ignored. The initial cloud task is the synthetic-reproducible R1–R4
+measurement-integrity fixes. Publishing a handoff does not mean Claude has started a run,
+and it does not authorize merging PRs. The founder retains merge approval.

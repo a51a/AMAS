@@ -92,3 +92,18 @@ tests/           unit, pipeline (synthetic FFmpeg video) and API tests
 ```
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
+
+For ongoing work, start with [testing-reports/README.md](testing-reports/README.md):
+current verification, independent review findings, and local experiment evidence.
+Claude Code works in the cloud from the GitHub checkout; start with the
+[cloud handoff](testing-reports/2026-11-26/CLOUD-HANDOFF.md). Codex keeps private recording
+analysis on-device. Local filesystem paths and ignored artifacts are not cloud prerequisites.
+
+## Shared research state
+
+Read [AGENTS.md](AGENTS.md) for responsibilities and working agreements and
+[the independent PR #1 review](testing-reports/2026-11-26/PR-001.md) for verified issues and the
+engineering handoff. BASELINE-001 is imported locally but remains provisional.
+Local research artifacts and per-exposure evidence stay in ignored `data/`; see the
+[protocol's analysis notes](experiments/EXP-001-biathlon/protocol.md#baseline-001-analysis-status).
+Do not treat automatic segment counts or unreviewed topic shares as accepted results.

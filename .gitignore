@@ -25,3 +25,7 @@ data/*
 .DS_Store
 .idea/
 .vscode/
+
+# Local captures and private testing evidence
+/instagram captures/
+/testing-reports/private/
