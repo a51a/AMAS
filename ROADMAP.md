@@ -13,6 +13,10 @@
   branch `codex/pr3-independent-review`. C1/C2 are P1 follow-ups (profile edits lost on
   startup; stale deviations bypass new readiness problems); C3/C4 are P2 (merge history
   lost on classification; zero eligible baseline unlocks intervention). R5–R9 remain open.
+- C1–C4 fixes from Claude Code cloud: branch `claude/c1-c4-review-followups`, PR to
+  `codex/pr3-independent-review`, not merged. 98 passed on synthetic inputs; see
+  [CLAUDE-C1-C4](testing-reports/2026-11-26/CLAUDE-C1-C4.md). After merge, previously accepted
+  T0 samples must be accepted again (acceptance is now bound to a data revision).
 - BASELINE-001 / EXP-001 / T0 remains provisional. Source/export consistency checks passed;
   startup migration was tested on a separate local database copy with observation data
   preserved. Original DB and recording were not migrated or altered in this review.
@@ -27,9 +31,9 @@ Taste Engine (versioned profiles, EXP-001), Evaluation Engine, rules-based Strat
 Manual/Mock actuators, Instagram manual adapter, Control Center, CSV/JSON export.
 
 ## Next
-1. **Close follow-up measurement findings**: Claude fixes C1/C2 first, then C3/C4 from
-   [PR-003](testing-reports/2026-11-26/PR-003.md), with regression tests and an independent
-   recheck. Do not treat merged code or a green suite as experiment readiness.
+1. **Close follow-up measurement findings**: C1–C4 from
+   [PR-003](testing-reports/2026-11-26/PR-003.md) are fixed in a pending PR; review, merge and
+   independently recheck it. Do not treat merged code or a green suite as experiment readiness.
 2. **Make real corrections/imports reliable**: R5/R6 (nullable fields, confidence, capture
    time and timezone validation), then R7/R8 (snapshot deletion and profile-version provenance).
 3. **Accept a defensible baseline before T1**: establish the human boundary reference (R9),

@@ -1,0 +1,62 @@
+[
+  {
+    "topic_id": "biathlon",
+    "label": "Biathlon",
+    "description": "DIRECT: biathlon competitions; biathlon athletes in a biathlon context; biathlon skiing and shooting; Biathlon World Cup and IBU content.",
+    "tier": "direct",
+    "polarity": "positive",
+    "target_weight": 0.2,
+    "keywords": [
+      "biathlon",
+      "biathlete",
+      "ibu",
+      "ibu world cup",
+      "biathlonworld",
+      "биатлон",
+      "биатлонист",
+      "biathlon world cup",
+      "rifle range",
+      "shooting range ski",
+      "pursuit",
+      "mass start",
+      "relay biathlon"
+    ]
+  },
+  {
+    "topic_id": "cross_country_skiing",
+    "label": "Cross-country skiing",
+    "description": "ADJACENT: cross-country skiing without biathlon shooting.",
+    "tier": "adjacent",
+    "polarity": "positive",
+    "target_weight": null,
+    "keywords": [
+      "cross-country skiing",
+      "cross country skiing",
+      "xc ski",
+      "xcski",
+      "nordic skiing",
+      "langlauf",
+      "лыжные гонки",
+      "fis cross-country"
+    ]
+  },
+  {
+    "topic_id": "winter_sports",
+    "label": "Winter sports / Winter Olympics",
+    "description": "ADJACENT: winter sports and Winter Olympics content without a specific biathlon focus.",
+    "tier": "adjacent",
+    "polarity": "positive",
+    "target_weight": null,
+    "keywords": [
+      "winter olympics",
+      "olympic winter",
+      "milano cortina",
+      "ski jumping",
+      "alpine skiing",
+      "snowboard",
+      "winter sports",
+      "nordic combined",
+      "зимние виды спорта"
+    ]
+  }
+]

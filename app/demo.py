@@ -11,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 from app.adapters.mock_platform import MockPlatformAdapter
 from app.actuator.base import MockActuator
 from app.models.schemas import ExperimentCreate
+from app.services import accept_sample
 from app.storage.repository import Repository
 from app.taste_engine.profiles import load_experiment_config, upgrade_legacy_profile
 
@@ -49,11 +50,9 @@ def seed_demo(repo: Repository, *, seed: int = 7, n_per_session: int = 50, reset
                                 captured_at=(anchor + timedelta(hours=hours)).isoformat())
         for row in MockPlatformAdapter.simulate_feed(rng, n_per_session, direct_rate=d, adjacent_rate=a):
             repo.add_observation(s["session_id"], row)
-        update = {"status": "classified"}
+        repo.update_session(s["session_id"], {"status": "classified"})
         if cp == "T0":
-            update.update({"sample_status": "accepted", "accepted_at": anchor.isoformat(),
-                           "deviation_note": "Simulated demo data; not human-reviewed."})
-        repo.update_session(s["session_id"], update)
+            accept_sample(repo, s["session_id"], deviation_note="Simulated demo data; not human-reviewed.")
     act = MockActuator(MockPlatformAdapter())
     repo.add_intervention(DEMO_ID, act.plan(exp, "simulated_boost", {"topic": "biathlon",
                                                                      "completed_at": anchor.isoformat()},
