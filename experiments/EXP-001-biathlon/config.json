@@ -7,7 +7,7 @@
     "surface": "reels_desktop_web",
     "profile_id": "PRF-EXP-001-biathlon",
     "target_topic": "biathlon",
-    "target_share": 0.20,
+    "target_share": 0.2,
     "is_demo": false,
     "config": {
       "subject": "Founder's existing personal Instagram account (algorithm NOT reset)",
@@ -37,11 +37,43 @@
       {
         "topic_id": "biathlon",
         "label": "Biathlon",
-        "description": "DIRECT: biathlon competitions; biathlon athletes in a biathlon context; biathlon skiing and shooting; Biathlon World Cup and IBU content.",
+        "description": "DIRECT: biathlon competitions; biathlon athletes in a biathlon context; biathlon skiing and shooting; Biathlon World Cup and IBU content. Requires an explicit biathlon reference; ambiguous sport terms are context only.",
         "tier": "direct",
         "polarity": "positive",
-        "target_weight": 0.20,
-        "keywords": ["biathlon", "biathlete", "ibu", "ibu world cup", "biathlonworld", "биатлон", "биатлонист", "biathlon world cup", "rifle range", "shooting range ski", "pursuit", "mass start", "relay biathlon"]
+        "target_weight": 0.2,
+        "keywords": [
+          "biathlon",
+          "biathlete",
+          "biathletes",
+          "biathlonworld",
+          "биатлон",
+          "биатлонист",
+          "биатлонистка",
+          "ibu world cup",
+          "ibu cup",
+          "biathlon world cup",
+          "biathlon world championships",
+          "biathlon relay",
+          "biathlon sprint",
+          "biathlon pursuit",
+          "biathlon mass start"
+        ],
+        "context_keywords": [
+          "pursuit",
+          "mass start",
+          "relay",
+          "sprint",
+          "individual",
+          "ibu",
+          "rifle",
+          "shooting",
+          "shooting range",
+          "rifle range",
+          "prone",
+          "standing",
+          "penalty loop",
+          "world cup"
+        ]
       },
       {
         "topic_id": "cross_country_skiing",
@@ -50,7 +82,17 @@
         "tier": "adjacent",
         "polarity": "positive",
         "target_weight": null,
-        "keywords": ["cross-country skiing", "cross country skiing", "xc ski", "xcski", "nordic skiing", "langlauf", "лыжные гонки", "fis cross-country"]
+        "keywords": [
+          "cross-country skiing",
+          "cross country skiing",
+          "xc ski",
+          "xcski",
+          "nordic skiing",
+          "langlauf",
+          "лыжные гонки",
+          "fis cross-country"
+        ],
+        "context_keywords": []
       },
       {
         "topic_id": "winter_sports",
@@ -59,7 +101,18 @@
         "tier": "adjacent",
         "polarity": "positive",
         "target_weight": null,
-        "keywords": ["winter olympics", "olympic winter", "milano cortina", "ski jumping", "alpine skiing", "snowboard", "winter sports", "nordic combined", "зимние виды спорта"]
+        "keywords": [
+          "winter olympics",
+          "olympic winter",
+          "milano cortina",
+          "ski jumping",
+          "alpine skiing",
+          "snowboard",
+          "winter sports",
+          "nordic combined",
+          "зимние виды спорта"
+        ],
+        "context_keywords": []
       }
     ]
   }

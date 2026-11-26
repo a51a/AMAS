@@ -87,7 +87,8 @@ class ProfileTopic(BaseModel):
     tier: TargetMatch = TargetMatch.DIRECT  # direct | adjacent
     polarity: str = "positive"  # positive | negative
     target_weight: float | None = None  # desired share 0..1
-    keywords: list[str] = Field(default_factory=list)
+    keywords: list[str] = Field(default_factory=list)  # explicit evidence for this topic
+    context_keywords: list[str] = Field(default_factory=list)  # ambiguous terms: context only, never sufficient
 
 
 class InterestProfile(BaseModel):
@@ -164,6 +165,9 @@ class InterventionCreate(BaseModel):
     description: str = ""
     parameters: dict[str, Any] = Field(default_factory=dict)
     actuator: str = "manual"  # manual | mock | authorized
+    # R4: planning before the baseline is ready requires an explicit, recorded protocol deviation.
+    override_baseline_check: bool = False
+    override_reason: str = ""
 
 
 class InterventionComplete(BaseModel):

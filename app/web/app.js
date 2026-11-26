@@ -26,6 +26,7 @@ async function api(path, opts = {}) {
   if (!r.ok) {
     let msg = r.statusText;
     try { msg = (await r.json()).detail || msg; } catch (_) {}
+    if (msg && typeof msg === "object" && msg.message) msg = [msg.message, ...(msg.problems || [])].join(" · ");
     throw new Error(typeof msg === "string" ? msg : JSON.stringify(msg));
   }
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text();
@@ -156,6 +157,7 @@ async function viewDetail(id) {
       <div class="card tile"><div class="label">Sample size</div><div class="value">${lastSample ? lastSample.exposures_eligible : "–"}</div><div class="hint">${lastSample ? `${lastSample.exposures_total} total · ${lastSample.unique_content_eligible} unique` : ""}</div></div>
       <div class="card tile"><div class="label">Unknown rate</div><div class="value">${pct(lastSample?.unknown_rate)}</div><div class="hint">undetermined eligibility ${pct(lastSample?.eligibility.undetermined_rate)}</div></div>
     </div>
+    ${readinessHtml(s.baseline_readiness)}
     ${s.warnings.length ? `<div class="banner warn" style="margin-top:12px">${s.warnings.map(esc).join("<br>")}</div>` : ""}
     <h2>Historical trend · direct ${esc(s.target_topic)} share</h2>
     <div class="card">${trendChart(s)}</div>
@@ -179,11 +181,11 @@ async function viewDetail(id) {
     <div class="card">${d.interventions.length ? `<ul class="timeline">${d.interventions.map((a) => `<li class="${a.completed_at ? "" : "pending"}"><b>${esc(a.description)}</b> <span class="pill">${esc(a.status)}</span> <span class="muted">${a.completed_at ? dt(a.completed_at) : "planned " + dt(a.planned_at)} · ${esc(a.authorization || "not yet authorized")}</span></li>`).join("")}</ul>` : `<p class="muted">No interventions logged.</p>`}</div>
     <h2>Observation sessions</h2>
     <div class="card table-wrap"><table>
-      <tr><th>Checkpoint</th><th>Label</th><th>Captured</th><th>Method</th><th>Exposures</th><th>Direct</th><th>Status</th><th></th></tr>
+      <tr><th>Checkpoint</th><th>Label</th><th>Captured</th><th>Method</th><th>Exposures</th><th>Direct</th><th>Status</th><th>Sample</th><th></th></tr>
       ${s.sessions.map((r) => { const ss = d.sessions.find((x) => x.session_id === r.session_id); return `<tr>
         <td><b>${esc(r.checkpoint)}</b></td><td>${esc(r.label)}</td><td>${dt(r.captured_at)}</td><td>${esc(ss.capture_method)}</td>
         <td>${r.metrics.exposures_eligible} / ${r.metrics.exposures_total}</td><td>${pct(r.metrics.direct_share)}</td><td>${esc(ss.status)}</td>
-        <td><a href="#/session/${r.session_id}">Review</a></td></tr>`; }).join("") || `<tr><td colspan="8" class="muted">No sessions yet. <a href="#/exp/${id}/import">Import the first baseline recording</a>.</td></tr>`}
+        <td>${sampleBadge(ss)}</td><td><a href="#/session/${r.session_id}">Review</a></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">No sessions yet. <a href="#/exp/${id}/import">Import the first baseline recording</a>.</td></tr>`}
     </table></div>
     <h2>Export</h2>
     <div class="row">
@@ -194,6 +196,18 @@ async function viewDetail(id) {
     <h2>Sampling caveats</h2>
     <ul class="muted">${s.caveats.map((c) => `<li>${esc(c)}</li>`).join("")}</ul>`;
   bindTips($view);
+}
+
+function sampleBadge(ss) {
+  if (ss.sample_status !== "accepted") return `<span class="pill">provisional</span>`;
+  return ss.deviation_note ? `<span class="pill warn" title="${esc(ss.deviation_note)}">accepted · deviation</span>` : `<span class="pill">accepted</span>`;
+}
+
+function readinessHtml(r) {
+  if (!r) return "";
+  const rows = r.sessions.map((x) => `<li>${esc(x.label || x.session_id)}: ${x.observations}/${x.required_reels} Reels · ${x.unreviewed} not human-reviewed · ${x.undetermined} undetermined · ${x.conflicts} conflicts · ${x.accepted ? (x.deviation_note ? "accepted with deviation" : "accepted") : "not accepted"}${x.counts ? " ✓" : ""}</li>`).join("");
+  return `<div class="banner ${r.ready ? "" : "warn"}" style="margin-top:12px"><b>Baseline readiness: ${r.ready ? "ready" : "not ready"}</b> (${r.counted_sessions} of ${r.required_sessions} T0 sessions × ${r.required_reels} Reels accepted)
+    ${r.ready ? "" : `<br>${r.problems.map(esc).join("<br>")}`}${rows ? `<ul style="margin:6px 0 0">${rows}</ul>` : ""}</div>`;
 }
 
 async function viewImport(id) {
@@ -250,7 +264,8 @@ async function viewSession(sid) {
   const dexp = await api(`/experiments/${s.experiment_id}`);
   const e = dexp.experiment; const st = await api("/status");
   expNav(e.experiment_id); markNav("");
-  const obs = d.observations.filter((o) => reviewFilter === "all" || (reviewFilter === "needs" && ["pending", "needs_review"].includes(o.review_status)) || (reviewFilter === "undetermined" && o.recommendation_status === "undetermined"));
+  const obs = d.observations.filter((o) => reviewFilter === "all" || (reviewFilter === "needs" && ["pending", "needs_review"].includes(o.review_status)) || (reviewFilter === "undetermined" && o.recommendation_status === "undetermined") || (reviewFilter === "conflicts" && o.eligibility_conflict));
+  const ready = (dexp.summary.baseline_readiness?.sessions || []).find((x) => x.session_id === sid);
   const isManual = s.capture_method === "manual_entry";
   $view.innerHTML = `
     ${demoBanner(e)}
@@ -262,9 +277,14 @@ async function viewSession(sid) {
       <button id="bulk-rec">Mark undetermined → recommended</button>
       ${d.frame_count ? `<button id="manual-seg">Manual boundaries…</button><button id="auto-seg">Re-run auto segmentation</button>` : ""}
       <span class="grow"></span>
-      <select id="filter"><option value="all">All</option><option value="needs">Needs review</option><option value="undetermined">Undetermined eligibility</option></select>
+      <select id="filter"><option value="all">All</option><option value="needs">Needs review</option><option value="undetermined">Undetermined eligibility</option><option value="conflicts">Eligibility conflicts</option></select>
     </div>
     ${s.segmentation_json ? `<p class="muted" style="font-size:12px">Segmentation: ${esc(s.segmentation_json.method)} · ${s.segmentation_json.fps} fps · threshold ${s.segmentation_json.threshold_used} · min ${s.segmentation_json.min_segment_seconds}s. Auto boundaries are suggestions: merge, split or set them manually.</p>` : ""}
+    ${ready ? `<div class="card row"><b>Baseline sample</b> ${sampleBadge(s)}
+      <span class="muted">${ready.observations}/${ready.required_reels} Reels · ${ready.unreviewed} not human-reviewed · ${ready.undetermined} undetermined · ${ready.conflicts} conflicts · ${ready.unknown_ad_status} with unknown ad status</span>
+      ${s.deviation_note ? `<span class="muted">Deviation: ${esc(s.deviation_note)}</span>` : ""}
+      <span class="grow"></span>
+      ${s.sample_status === "accepted" ? `<button id="unaccept">Withdraw acceptance</button>` : `<button id="accept" class="primary">Accept as baseline sample…</button>`}</div>` : ""}
     ${isManual ? quickLogHtml() : ""}
     <div class="card">${obs.map((o) => obsHtml(o, d.frame_count)).join("") || `<p class="muted">No observations${reviewFilter !== "all" ? " match this filter" : ""}.</p>`}</div>
     <h2>Data controls</h2>
@@ -280,15 +300,29 @@ async function viewSession(sid) {
   on("cls-llm", async () => consentThenClassify(e, sid, st));
   on("bulk-rec", async () => {
     if (!confirmBox("Only do this if every Reel in this session came from the Reels recommendation feed (not search, not opened profiles).")) return;
-    const r = await api(`/sessions/${sid}/eligibility`, { json: { recommendation_status: "recommended" } }); toast(`${r.updated} updated`); rerun();
+    const r = await api(`/sessions/${sid}/eligibility`, { json: { recommendation_status: "recommended" } });
+    toast(`${r.updated} updated${r.conflicts ? `, ${r.conflicts} conflicts need review` : ""}`); rerun();
   });
+  on("accept", async () => {
+    if (ready && !ready.complete) {
+      const note = window.prompt(`This sample does not meet the protocol:\n${ready.problems.join("\n")}\n\nTo accept it anyway, describe the protocol deviation (recorded and reported):`);
+      if (!note || !note.trim()) return;
+      await api(`/sessions/${sid}/accept`, { json: { deviation_note: note } });
+    } else {
+      if (!confirmBox("Accept this session as a T0 baseline sample? Later edits that make it incomplete revoke readiness.")) return;
+      await api(`/sessions/${sid}/accept`, { json: {} });
+    }
+    toast("Sample accepted"); rerun();
+  });
+  on("unaccept", async () => { await api(`/sessions/${sid}/accept`, { json: { accepted: false } }); rerun(); });
   on("manual-seg", async () => {
+    if (!confirmBox("Changing boundaries keeps unchanged Reels as they are, sends changed Reels back to review and removes Reels whose start time you delete.")) return;
     const cur = d.observations.map((o) => o.video_offset_seconds).filter((x) => x > 0).join(", ");
     const v = window.prompt("Reel start times in seconds, comma separated (first Reel starts at 0):", cur);
     if (v === null) return;
     await api(`/sessions/${sid}/segments/manual`, { json: { boundary_seconds: v.split(",").map((x) => parseFloat(x)).filter((x) => !isNaN(x)) } }); rerun();
   });
-  on("auto-seg", async () => { if (confirmBox("Re-running auto segmentation discards current labels for this session.")) { await api(`/sessions/${sid}/segments/auto`, { method: "POST" }); rerun(); } });
+  on("auto-seg", async () => { if (confirmBox("Re-run auto segmentation? Reels whose boundaries stay the same keep their labels; Reels whose boundaries change are sent back to review and new Reels start unlabelled.")) { await api(`/sessions/${sid}/segments/auto`, { method: "POST" }); rerun(); } });
   on("del-rec", async () => { if (confirmBox("Delete the recording file and all extracted frames from disk?")) { await api(`/sessions/${sid}/recording`, { method: "DELETE" }); rerun(); } });
   on("del-ses", async () => { if (confirmBox("Delete this session, its recording, frames, observations and metrics?")) { await api(`/sessions/${sid}`, { method: "DELETE" }); location.hash = `#/exp/${e.experiment_id}`; } });
   bindObsActions(sid, rerun);
@@ -304,7 +338,7 @@ function obsHtml(o, hasFrames) {
     <div>${img}</div>
     <div>
       <div class="row"><b>#${o.sequence_number}</b><span class="meta">${secs(o.video_offset_seconds)}–${secs(o.segment_end_seconds)} · ${o.frame_count ?? "–"} frames</span>
-        <span class="pill">${esc(o.review_status)}</span><span class="meta">${esc(o.classifier_version || "unclassified")} ${o.confidence !== null ? `· conf ${o.confidence.toFixed(2)}` : ""}</span></div>
+        <span class="pill">${esc(o.review_status)}</span>${o.eligibility_conflict ? `<span class="pill warn" title="A followed-account marker was detected but the Reel is marked recommended. Set eligibility and Save to resolve.">eligibility conflict</span>` : ""}${o.followed_signal ? `<span class="meta">followed marker seen</span>` : ""}<span class="meta">${esc(o.classifier_version || "unclassified")} ${o.confidence !== null ? `· conf ${o.confidence.toFixed(2)}` : ""}</span></div>
       <div class="row" style="margin-top:6px">
         <label class="f">Topic match<select data-f="target_match">${LABELS.map((l) => `<option ${o.target_match === l ? "selected" : ""}>${l}</option>`).join("")}</select></label>
         <label class="f">Topic label<input data-f="topic_label" value="${esc(o.topic_label || "")}" size="16"></label>
@@ -338,8 +372,8 @@ function bindObsActions(sid, rerun) {
             recommendation_status: val("recommendation_status"), is_ad: isAd === "" ? null : isAd === "true", caption_text: val("caption_text") || null } });
           toast("Saved"); rerun();
         } else if (act === "confirm") { await api(`/observations/${id}`, { method: "PATCH", json: { confirm: true } }); rerun(); }
-        else if (act === "merge") { await api(`/observations/${id}/merge-next`, { method: "POST" }); rerun(); }
-        else if (act === "split") { const t = window.prompt("Split at (seconds into the recording):"); if (t) { await api(`/observations/${id}/split`, { json: { at_seconds: parseFloat(t) } }); rerun(); } }
+        else if (act === "merge") { if (!confirmBox("Merge this Reel with the next one? Only this Reel changes: it keeps its ID but goes back to review, and the next Reel's labels are kept as evidence. Other Reels are untouched.")) return; await api(`/observations/${id}/merge-next`, { method: "POST" }); rerun(); }
+        else if (act === "split") { const t = window.prompt("Split at (seconds into the recording). This Reel goes back to review and the second part starts unlabelled; other Reels are untouched:"); if (t) { await api(`/observations/${id}/split`, { json: { at_seconds: parseFloat(t) } }); rerun(); } }
         else if (act === "delete") { if (confirmBox("Delete this observation?")) { await api(`/observations/${id}`, { method: "DELETE" }); rerun(); } }
         else if (act === "frames") {
           const fr = await api(`/observations/${id}/frames`);
@@ -427,12 +461,14 @@ async function viewInterventions(id) {
   $view.innerHTML = `${demoBanner(e)}
     <h1>Intervention log</h1>
     <p class="sub">Interventions on ${esc(cat.platform)} are performed by you, by hand. Automation: <b>${cat.supports_automation ? "available" : "not available (manual only)"}</b>.</p>
+    ${d.summary.baseline_readiness && !d.summary.baseline_readiness.ready ? `<div class="banner warn"><b>Baseline not ready.</b> ${d.summary.baseline_readiness.problems.map(esc).join(" ")} Planning an action now requires a recorded protocol deviation.</div>` : ""}
     ${plan.recommended_actions.length ? `<div class="card"><b>Strategist suggestions</b><ul>${plan.recommended_actions.map((a) => `<li><b>${esc(a.title)}</b> (${a.priority}): ${esc(a.rationale)} <button class="small" data-plan="${esc(a.action_type)}" data-params='${esc(JSON.stringify(a.parameters))}'>Plan this</button></li>`).join("")}</ul></div>` : ""}
     <h2>Log a new action</h2>
     <div class="card grid" style="gap:10px">
       <div class="row"><label class="f">Action<select id="atype">${cat.actions.map((a) => `<option value="${esc(a.action_type)}">${esc(a.title)}${a.reserved_for ? " (reserved: " + esc(a.reserved_for) + ")" : ""}</option>`).join("")}</select></label>
         <label class="f grow">Description<input id="adesc" placeholder="What exactly will you do?"></label></div>
       <label class="f">Parameters (JSON)<input id="aparams" value='${esc(JSON.stringify(cat.actions[0]?.default_parameters || {}))}'></label>
+      ${d.summary.baseline_readiness && !d.summary.baseline_readiness.ready ? `<div class="row"><label><input type="checkbox" id="aoverride"> Plan despite the incomplete baseline (protocol deviation)</label><input class="grow" id="areason" placeholder="Reason, recorded with the action"></div>` : ""}
       <div><button class="primary" id="aplan">Create ${actuator === "mock" ? "simulated" : "manual"} action</button></div>
     </div>
     <h2>Log</h2>
@@ -446,7 +482,9 @@ async function viewInterventions(id) {
   const sel = document.getElementById("atype");
   sel.onchange = () => { const a = cat.actions.find((x) => x.action_type === sel.value); document.getElementById("aparams").value = JSON.stringify(a.default_parameters); };
   const create = async (type, params, desc) => {
-    try { await api(`/experiments/${id}/interventions`, { json: { action_type: type, parameters: params, description: desc, actuator } }); viewInterventions(id); }
+    const ov = document.getElementById("aoverride");
+    const extra = ov && ov.checked ? { override_baseline_check: true, override_reason: document.getElementById("areason").value } : {};
+    try { await api(`/experiments/${id}/interventions`, { json: { action_type: type, parameters: params, description: desc, actuator, ...extra } }); viewInterventions(id); }
     catch (err) { toast(err.message); }
   };
   document.getElementById("aplan").onclick = () => {

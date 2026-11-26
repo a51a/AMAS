@@ -7,7 +7,7 @@ import pytest
 from app.actuator.base import ActuatorUnavailable, FutureAuthorizedActuator, ManualActuator, MockActuator
 from app.adapters.instagram_manual import InstagramManualAdapter
 from app.demo import DEMO_ID, seed_demo
-from app.services import compute_plan, compute_summary, export_csv, export_json
+from app.services import accept_sample, compute_plan, compute_summary, export_csv, export_json
 from tests.conftest import needs_ffmpeg
 from tests.fixtures.synthetic_video import make_reels_video
 
@@ -44,11 +44,18 @@ def test_demo_is_separated_and_labelled(repo):
 def test_strategist_flow(repo):
     plan = compute_plan(repo, "EXP-001")
     assert plan["status"] == "collect_baseline" and plan["next_checkpoint"]["checkpoint"] == "T0"
+    sids = []
     for label in ("A", "B"):
         s = repo.create_session("EXP-001", checkpoint="T0", capture_method="manual_entry", label=label)
+        sids.append(s["session_id"])
         for i in range(50):
             repo.add_observation(s["session_id"], {"target_match": "unrelated", "recommendation_status": "recommended",
                                                    "review_status": "confirmed"})
+    # complete but not yet accepted: still collecting the baseline
+    plan = compute_plan(repo, "EXP-001")
+    assert plan["status"] == "collect_baseline" and plan["recommended_actions"] == []
+    for sid in sids:
+        accept_sample(repo, sid)
     plan = compute_plan(repo, "EXP-001")
     assert plan["status"] == "intervene" and plan["recommended_actions"][0]["action_type"] == "search_and_watch_target"
     assert plan["next_checkpoint"]["checkpoint"] == "T1"
@@ -65,6 +72,9 @@ def test_api_manual_baseline_compare_and_export(client):
         body = [{"target_match": "direct", "topic_label": "biathlon", "recommendation_status": "recommended"}] * direct
         body += [{"target_match": "unrelated", "recommendation_status": "recommended"}] * (50 - direct)
         assert len(client.post(f"/api/sessions/{s['session_id']}/observations/bulk", json=body).json()) == 50
+        if cp == "T0":
+            r = client.post(f"/api/sessions/{s['session_id']}/accept", json={})
+            assert r.status_code == 200 and r.json()["sample_status"] == "accepted", r.text
         if cp == "T0" and label == "B":
             a = client.post("/api/experiments/EXP-001/interventions",
                             json={"action_type": "search_and_watch_target", "actuator": "manual"}).json()

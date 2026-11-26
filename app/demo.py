@@ -12,7 +12,7 @@ from app.adapters.mock_platform import MockPlatformAdapter
 from app.actuator.base import MockActuator
 from app.models.schemas import ExperimentCreate
 from app.storage.repository import Repository
-from app.taste_engine.profiles import load_experiment_config
+from app.taste_engine.profiles import load_experiment_config, upgrade_legacy_profile
 
 DEMO_ID = "DEMO-001"
 
@@ -34,6 +34,7 @@ def seed_demo(repo: Repository, *, seed: int = 7, n_per_session: int = 50, reset
     profile = profile.model_copy(update={"profile_id": "PRF-DEMO-biathlon", "name": "DEMO Biathlon (simulated)",
                                          "is_demo": True})
     repo.upsert_profile(profile)
+    upgrade_legacy_profile(repo, profile)
     repo.create_experiment(ExperimentCreate(
         experiment_id=DEMO_ID, name="Operation Biathlon - SIMULATED DEMO",
         research_question="Demo of the AMAS workflow on synthetic data. Not a research finding.",
@@ -48,7 +49,11 @@ def seed_demo(repo: Repository, *, seed: int = 7, n_per_session: int = 50, reset
                                 captured_at=(anchor + timedelta(hours=hours)).isoformat())
         for row in MockPlatformAdapter.simulate_feed(rng, n_per_session, direct_rate=d, adjacent_rate=a):
             repo.add_observation(s["session_id"], row)
-        repo.update_session(s["session_id"], {"status": "classified"})
+        update = {"status": "classified"}
+        if cp == "T0":
+            update.update({"sample_status": "accepted", "accepted_at": anchor.isoformat(),
+                           "deviation_note": "Simulated demo data; not human-reviewed."})
+        repo.update_session(s["session_id"], update)
     act = MockActuator(MockPlatformAdapter())
     repo.add_intervention(DEMO_ID, act.plan(exp, "simulated_boost", {"topic": "biathlon",
                                                                      "completed_at": anchor.isoformat()},

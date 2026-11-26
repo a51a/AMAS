@@ -97,3 +97,53 @@ that local directory. Raw recordings, frames, OCR, per-account exports and priva
 remain on-device and Git-ignored. The initial cloud task is the synthetic-reproducible R1–R4
 measurement-integrity fixes. Publishing a handoff does not mean Claude has started a run,
 and it does not authorize merging PRs. The founder retains merge approval.
+
+## D-017 · Additive schema v2 migration (2026-11-26)
+R3/R4 need new columns: `observation_sessions.sample_status`, `accepted_at`, `deviation_note`
+and `content_observations.followed_signal`, `eligibility_source`, `eligibility_conflict`.
+On open, `Database._migrate()` adds missing columns with `ALTER TABLE ... ADD COLUMN` and
+records `meta.schema_version = 2`. Existing rows and values are never rewritten; existing
+sessions start as `provisional` and must be accepted explicitly. No down-migration.
+
+## D-018 · Boundary edits reconcile instead of replace (R1, 2026-11-26)
+Merge, split, manual boundaries and re-running auto segmentation compute a plan against the
+existing observations. Same start and end (±1 ms): keep the row, refresh only frame-derived
+fields. Same start, different end: keep the ID, send it back to `needs_review`, and append an
+evidence note with the old and new interval plus the labels of absorbed rows. Otherwise: a
+new `pending`/`unknown`/`undetermined` row. Rows without offsets (manual entries) are kept.
+The plan is applied in one SQLite transaction; validation happens before any write.
+
+## D-019 · DIRECT requires explicit target evidence (R2, 2026-11-26)
+The taxonomy, target and denominator are unchanged; only the evidence rule is tightened.
+Profile topics gain `context_keywords` (ambiguous terms: pursuit, mass start, relay, sprint,
+IBU, rifle, shooting, ...). The mock classifier (v2) uses only explicit `keywords` for
+DIRECT/ADJACENT, treats ambiguous terms as context even in older profiles, ignores interface
+words, and returns UNKNOWN for context-only, interface-only or too-short text. It never
+returns UNRELATED, because missing keywords do not identify other content. A stored EXP-001
+or demo profile that still has the exact Sprint 1 keyword set is saved as a new profile
+version with the shipped topics; user-edited profiles and existing labels are not changed.
+
+## D-020 · Eligibility evidence and conflicts (R3, 2026-11-26)
+`eligibility_source` records who set `recommendation_status` (`classifier`,
+`bulk_assumption`, `human_review`; NULL for legacy rows). A detected followed-account marker
+always sets `followed_signal`. It turns `undetermined` into `followed_account`, and flags a
+`recommended` row (whatever its source, including human review) with `eligibility_conflict`
+instead of overwriting it. Bulk "recommended" on a row with a followed marker also flags a
+conflict. Conflicted rows are excluded from the primary metric and reported (warnings,
+`eligibility.conflicts`); they remain in the all-exposure metric. A per-Reel human ruling
+resolves the conflict. This changes which rows count as eligible only for rows with
+contradictory evidence; the primary-metric definition is otherwise unchanged.
+
+## D-021 · Baseline readiness gate and explicit acceptance (R4, 2026-11-26)
+A T0 sample is complete when it has at least `reels_per_sample` observations (default 50),
+every one human-reviewed (`confirmed`/`corrected`), no undetermined eligibility and no
+conflicts; unknown ad status is allowed and reported. Samples must be explicitly accepted
+(`POST /api/sessions/{id}/accept`). An incomplete, non-empty sample can be accepted only with
+a non-empty `deviation_note`, stored and reported as a protocol deviation. Readiness requires
+`baseline_sessions` (default 2) accepted samples that are still complete or carry a deviation
+note; edits after acceptance can revoke readiness. Until ready, the strategist stays on
+`collect_baseline` with no suggestions, and planning an intervention returns 409 unless the
+request sets `override_baseline_check` with an `override_reason` (stored in the action's
+parameters). The pooled baseline metric itself is unchanged. Demo T0 samples are accepted
+with the deviation note "Simulated demo data; not human-reviewed."
+

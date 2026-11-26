@@ -7,13 +7,14 @@ The current handoff is on `codex/cto-review-exp001`; do not assume it is already
 
 | Date | Report | Use |
 |---|---|---|
+| 2026-11-26 | [R1–R4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-R1-R4.md) | Synthetic regression results for the R1–R4 fix branch (PR to `codex/cto-review-exp001`); R5–R9 still open |
 | 2026-11-26 | [Cloud engineering handoff](2026-11-26/CLOUD-HANDOFF.md) | Start here in Claude Code cloud: branch, scope, commands and deliverables |
 | 2026-11-26 | [PR #1 independent review and engineering handoff](2026-11-26/PR-001.md) | Open R1–R9 findings, priority, reproduction and acceptance criteria |
 | 2026-11-26 | [Verification after relocation](2026-11-26/VERIFICATION.md) | Current test commands, environment and limitations |
 | 2026-11-26 | Local-only: `private/2026-11-26/BASELINE-001.md` | Private measured results; deliberately unavailable to cloud agents |
 
-The review findings remain open. Start with R1–R4; passing existing tests does not mean
-those defects are fixed. The baseline remains provisional and all images must stay on-device.
+The review findings remain open until the R1–R4 fix PR is reviewed and merged by the founder;
+R5–R9 are not addressed yet. Passing tests does not mean real-data validation. The baseline remains provisional and all images must stay on-device.
 See [ROADMAP.md](../ROADMAP.md) for the shared backlog.
 
 ## Report convention
