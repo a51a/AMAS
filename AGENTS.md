@@ -21,8 +21,8 @@ Do not infer decisions or access from previous chats.
 
 Prove the Observe → Compare → Strategize → Act → Measure → Repeat loop on EXP-001.
 Do not expand into SaaS, multi-platform automation, or a marketplace before measurement
-is trustworthy. The first PR is already merged; independent review and the next engineering
-handoff are in `testing-reports/2026-11-26/PR-001.md`. `ROADMAP.md` is the canonical shared status/backlog;
+is trustworthy. PRs #1–#3 are merged; the latest independent review and next engineering
+handoff are in `testing-reports/2026-11-26/PR-003.md`. `ROADMAP.md` is the canonical shared status/backlog;
 reuse it rather than creating a competing state file.
 
 ## Collaboration and changes
@@ -73,7 +73,8 @@ The founder designated lab/AMAS as the canonical LOCAL project location for Code
 private research on 2026-11-26. Claude Code works in the cloud from `a51a/AMAS`; its working
 directory is its own repository checkout, not a path on the founder's computer. GitHub
 branches and PRs carry shared code, instructions, public-safe reports, and engineering tasks.
-See `testing-reports/2026-11-26/CLOUD-HANDOFF.md` for the current cloud task.
+See the latest entry in `testing-reports/README.md` for the current cloud task;
+`CLOUD-HANDOFF.md` is the historical first assignment.
 Read `testing-reports/README.md` before starting engineering work; follow its latest review
 and test report. Public-safe reports go in `testing-reports/YYYY-MM-DD/`. Private logs,
 per-account summaries, and export links go in ignored `testing-reports/private/YYYY-MM-DD/`;

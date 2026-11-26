@@ -38,7 +38,7 @@ recommendation feeds. Current stage: Sprint 1 local MVP. Read `docs/ARCHITECTURE
 Read [testing-reports/README.md](testing-reports/README.md) first. It links to the latest
 independent findings and verification. Claude Code works in the cloud: use your GitHub
 checkout of `a51a/AMAS`, not the founder's filesystem. Read
-[the cloud handoff](testing-reports/2026-11-26/CLOUD-HANDOFF.md), create a separate implementation
+[the latest independent review and next tasks](testing-reports/2026-11-26/PR-003.md), create a separate implementation
 branch, and save public-safe test reports under testing-reports/. Local `data/`, recordings,
 and testing-reports/private/ are deliberately unavailable in cloud checkouts. Reproduce
 the engineering findings with synthetic inputs. Preserve uncommitted work in your checkout.
