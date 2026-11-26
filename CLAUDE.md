@@ -2,6 +2,10 @@
 
 Guidance for AI coding agents working in this repository.
 
+Read [AGENTS.md](AGENTS.md) for shared roles and working agreements. Shared current state
+and priorities live in [ROADMAP.md](ROADMAP.md); the independent Sprint 1 review and
+engineering handoff are in [testing-reports/2026-11-26/PR-001.md](testing-reports/2026-11-26/PR-001.md).
+
 ## Project
 AMAS (Algorithm Management as a Service): local-first lab for measuring and steering
 recommendation feeds. Current stage: Sprint 1 local MVP. Read `docs/ARCHITECTURE.md` and
@@ -29,3 +33,12 @@ recommendation feeds. Current stage: Sprint 1 local MVP. Read `docs/ARCHITECTURE
   functions over dicts; keep DB access in `app/storage/repository.py`.
 - Frontend is vanilla JS in `app/web/`; no build step, no frameworks.
 - Code, comments and docs in English.
+
+## Start here for testing and review
+Read [testing-reports/README.md](testing-reports/README.md) first. It links to the latest
+independent findings and verification. Claude Code works in the cloud: use your GitHub
+checkout of `a51a/AMAS`, not the founder's filesystem. Read
+[the cloud handoff](testing-reports/2026-11-26/CLOUD-HANDOFF.md), create a separate implementation
+branch, and save public-safe test reports under testing-reports/. Local `data/`, recordings,
+and testing-reports/private/ are deliberately unavailable in cloud checkouts. Reproduce
+the engineering findings with synthetic inputs. Preserve uncommitted work in your checkout.

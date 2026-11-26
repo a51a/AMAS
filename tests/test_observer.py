@@ -59,7 +59,8 @@ def test_mock_classifier_never_fabricates(repo):
     r = clf.classify(ClassificationInput("o", _profile(repo), caption_text="Morning xc ski in Lillehammer"))
     assert r.target_match.value == "adjacent"
     r = clf.classify(ClassificationInput("o", _profile(repo), caption_text="Pasta carbonara recipe"))
-    assert r.target_match.value == "unrelated" and r.confidence < 0.7
+    # R2: missing target keywords do not identify other content, so the mock leaves it UNKNOWN
+    assert r.target_match.value == "unknown" and r.confidence < 0.7
     r = clf.classify(ClassificationInput("o", _profile(repo), caption_text="Sponsored · new phone"))
     assert r.is_ad is True
 

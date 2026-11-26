@@ -41,11 +41,30 @@ always works.
    `.mov` file (or paste its path, faster for big files). AMAS copies it to `data/recordings/`,
    extracts frames with FFmpeg and proposes Reel boundaries.
 5. On the review screen:
-   - check the boundaries: **Merge with next**, **Split…** or **Manual boundaries…**;
-   - click **Mark undetermined → recommended** (only if everything came from the Reels feed);
-   - label each Reel `direct / adjacent / unrelated / unknown`, mark ads and followed accounts;
+   - check the boundaries first: **Merge with next**, **Split…** or **Manual boundaries…**.
+     Boundary edits are atomic and only touch the Reels whose interval changes: unchanged Reels
+     keep their ID, labels, eligibility, ad state and review status; a changed Reel keeps its ID
+     but goes back to `needs_review` (the absorbed Reel's labels are kept as evidence); a new
+     part starts `pending` / `unknown`;
+   - click **Mark undetermined → recommended** (only if everything came from the Reels feed).
+     If a Reel carries a detected followed-account marker it is flagged as an
+     **eligibility conflict** and excluded from the primary metric until you set its
+     eligibility for that Reel and **Save** (filter: *Eligibility conflicts*);
+   - label each Reel `direct / adjacent / unrelated / unknown`, mark ads and followed accounts.
+     `direct` needs an explicit biathlon reference; words like "pursuit", "mass start",
+     "relay" or "IBU" alone are not enough, and interface text ("Follow", "Like") is not
+     evidence. If you cannot tell, use `unknown` (it stays in the denominator);
    - optional: **Classify (local mock)** or, after enabling it, **Classify with vision LLM…**.
-6. Repeat for `Baseline B` (second T0 session). The experiment page then shows the baseline share.
+     Machine labels are suggestions (`auto_accepted` / `needs_review`): confirm or correct
+     every Reel before accepting the sample.
+6. When all 50 Reels are human-reviewed (`confirmed` / `corrected`) and every Reel has a
+   resolved eligibility, click **Accept as baseline sample…**. An incomplete sample can only
+   be accepted with a written protocol deviation, which is stored and shown on the experiment
+   page and in exports.
+7. Repeat for `Baseline B` (second T0 session). The experiment page shows **Baseline
+   readiness**. Until 2 accepted T0 samples of 50 Reels exist, the strategist keeps you on
+   `collect_baseline`, suggests no intervention, and the API refuses to plan a T1 action
+   unless you tick *Plan despite the incomplete baseline* and record a reason.
 
 CLI alternative: `python -m app.cli import ~/Movies/rec.mov --checkpoint T0 --label "Baseline A"`.
 
@@ -92,3 +111,18 @@ tests/           unit, pipeline (synthetic FFmpeg video) and API tests
 ```
 
 See [ROADMAP.md](ROADMAP.md) for what comes next.
+
+For ongoing work, start with [testing-reports/README.md](testing-reports/README.md):
+current verification, independent review findings, and local experiment evidence.
+Claude Code works in the cloud from the GitHub checkout; start with the
+[cloud handoff](testing-reports/2026-11-26/CLOUD-HANDOFF.md). Codex keeps private recording
+analysis on-device. Local filesystem paths and ignored artifacts are not cloud prerequisites.
+
+## Shared research state
+
+Read [AGENTS.md](AGENTS.md) for responsibilities and working agreements and
+[the independent PR #1 review](testing-reports/2026-11-26/PR-001.md) for verified issues and the
+engineering handoff. BASELINE-001 is imported locally but remains provisional.
+Local research artifacts and per-exposure evidence stay in ignored `data/`; see the
+[protocol's analysis notes](experiments/EXP-001-biathlon/protocol.md#baseline-001-analysis-status).
+Do not treat automatic segment counts or unreviewed topic shares as accepted results.

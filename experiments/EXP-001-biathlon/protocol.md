@@ -54,3 +54,52 @@ unknown and undetermined rates. Exposures are autocorrelated; intervals are indi
 ## Threats to validity
 Seasonality (biathlon season runs November-March), concurrent trends, observer behaviour during
 sampling, single account, labelling subjectivity, ads and followed content mixed into the feed.
+
+## BASELINE-001 analysis status
+
+On 2026-11-26 the first real recording was imported as BASELINE-001 / T0. It remains a
+**provisional sample**, not an accepted baseline or a test of the 20% intervention target.
+No algorithm reset, platform interaction, or intervention was performed by the analyst.
+All images remain on-device by the founder's explicit instruction.
+
+Local state uses the existing schema: `data/amas.sqlite`, `content_observations`,
+`recording_frames`, and `experiment_metrics`. Private evidence and results are in
+`data/research/BASELINE-001/` (ignored by Git):
+
+| Artifact | Purpose |
+|---|---|
+| `manifest.json` | Original path, source checksum, media metadata, capture time, session ID, preservation check |
+| `stock-import.json`, `stock-frames.json` | Unmodified pipeline proposal and original frame metadata before research refinement |
+| `frames-2fps/`, `local-vision.jsonl` | Local sampled frames, OCR boxes/scores, and image-label scores |
+| `anchor-runs.json`, `evidence.json` | Proposed individual exposure intervals, boundary brackets, representative samples, flags, uncertainties |
+| `analysis.json` | Provisional metrics, unknown-topic sensitivity bounds, ad uncertainty, duplicate candidates, acceptance gaps |
+| `amas-export.json`, `observations.csv` | Existing AMAS export formats; real data, never synthetic |
+| `review.html` | Local-only visual review sheet, without scripts or external resources |
+
+The local report is an immutable analysis snapshot. Corrections in AMAS require a new
+dated export/report; do not silently overwrite the original snapshot. Research sidecars
+are separate from session storage and must be handled explicitly if deleting local data.
+
+### Interpretation and review
+
+- A frame sample is not a Reel. Group by persistent creator-overlay transitions, retain
+  boundary uncertainty, inspect start/end censoring, and confirm on the local original.
+  The research detector is tailored to this recording's layout and is not production-ready.
+- Local image tags identify only a small set of content cues; generic people/outdoor tags
+  do not establish a topic. All suggested labels require review. No keyword match is not
+  evidence of UNRELATED, and no detected DIRECT is not proof of a zero underlying share.
+- Keep `is_ad=null` distinct from `false`; absence of an ad marker is not a verified non-ad.
+  The existing eval-v1 convention includes recommended items with unknown ad status. Report
+  its unknown-ad count explicitly and, separately, a verified-non-ad sensitivity denominator.
+- Duplicate-content candidates do not reduce exposure counts. aHash unique-content counts
+  are heuristic; review candidates before interpreting them as actual distinct content.
+- Conditional unknown-topic bounds are `[D/N, (D+U)/N]` for the chosen eligible exposures.
+  They are not confidence intervals and do not account for boundary, eligibility, or
+  classifier error. Wilson intervals likewise do not resolve missing classifications.
+- Confirm exposure boundaries and eligibility, review content, and complete the planned
+  baseline sampling before T1. Preserve the existing two-session protocol; label deviations.
+- Subsequent checkpoints need consistent observation behavior and actual capture timestamps.
+  Log manual interventions with counts/times, then measure immediate and delayed results.
+  This single-account before/after design establishes association, not general causal proof.
+
+Reproduction and engineering tasks: [PR-001 review](../../testing-reports/2026-11-26/PR-001.md).
