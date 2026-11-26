@@ -10,7 +10,7 @@ from app.observer.classifiers.mock import MockClassifier
 from app.services import ProtocolError, accept_sample, compute_plan, compute_summary
 from app.storage.db import SCHEMA_VERSION, Database
 from app.storage.repository import Repository
-from app.taste_engine.profiles import LEGACY_V1_BIATHLON_KEYWORDS, ensure_exp001
+from app.taste_engine.profiles import LEGACY_V1_BIATHLON_KEYWORDS, ensure_exp001, legacy_v1_topics
 
 LABELS = dict(target_match="unrelated", topic_label="synthetic", review_status="confirmed",
               recommendation_status="recommended", is_ad=False, classifier_version="human-manual")
@@ -155,9 +155,8 @@ def test_legacy_exp001_profile_is_upgraded_once(settings):
     repo = Repository(Database(settings.db_path), settings.data_dir)
     ensure_exp001(repo)
     pid = "PRF-EXP-001-biathlon"
-    topics = repo.get_profile(pid)["topics"]
-    topics[0] = {**topics[0], "keywords": sorted(LEGACY_V1_BIATHLON_KEYWORDS), "context_keywords": []}
-    repo.db.update("interest_profiles", "profile_id", pid, {"topics_json": topics})
+    # simulate a database created by Sprint 1: the exact shipped v1 topics (C1: only these are upgraded)
+    repo.db.update("interest_profiles", "profile_id", pid, {"topics_json": legacy_v1_topics()})
     v_before = repo.get_profile(pid)["version"]
     ensure_exp001(repo)
     upgraded = repo.get_profile(pid)

@@ -33,6 +33,34 @@ def _readiness(summary: dict) -> dict:
                                                  "problems": ["Baseline readiness was not computed."]}
 
 
+def _data_quality_findings(summary: dict) -> list[str]:
+    findings = []
+    for row in summary["sessions"]:
+        m = row["metrics"]
+        if m["review"]["pending"] or m["review"]["needs_review"]:
+            findings.append(f"{row['checkpoint']}: {m['review']['pending'] + m['review']['needs_review']} observations "
+                            "still need classification review.")
+        if m["eligibility"]["undetermined"]:
+            findings.append(f"{row['checkpoint']}: {m['eligibility']['undetermined']} observations have undetermined "
+                            "eligibility (mark as recommended / followed / search).")
+        if m["eligibility"].get("conflicts"):
+            findings.append(f"{row['checkpoint']}: {m['eligibility']['conflicts']} observations have conflicting "
+                            "eligibility evidence (followed-account marker vs. 'recommended').")
+    return findings
+
+
+def intervention_gate(summary: dict, interventions: list[dict]) -> dict:
+    """Single source of truth for 'may a T1 intervention be planned without an override?' (C2, D-023).
+
+    Used by both the strategist and the intervention API so they cannot disagree. Before the first completed
+    intervention, any open review item blocks planning; afterwards only baseline readiness is re-checked.
+    """
+    problems = list(_readiness(summary)["problems"]) if not _readiness(summary)["ready"] else []
+    if not any(a["status"] in ("completed", "simulated") for a in interventions):
+        problems += _data_quality_findings(summary)
+    return {"open": not problems, "problems": problems}
+
+
 def next_checkpoint(summary: dict, interventions: list[dict]) -> dict | None:
     done = {t["checkpoint"] for t in summary["trend"]}
     completed = [a for a in interventions if a["status"] in ("completed", "simulated") and a.get("completed_at")]
@@ -76,22 +104,9 @@ def build_plan(experiment: dict, summary: dict, interventions: list[dict], adapt
     findings.append(f"Baseline direct {topic} share: {_pct(baseline['direct_share'])} "
                     f"over {baseline['exposures_eligible']} eligible exposures.")
 
-    data_quality_issue = False
-    for row in summary["sessions"]:
-        m = row["metrics"]
-        if m["review"]["pending"] or m["review"]["needs_review"]:
-            data_quality_issue = True
-            findings.append(f"{row['checkpoint']}: {m['review']['pending'] + m['review']['needs_review']} observations "
-                            "still need classification review.")
-        if m["eligibility"]["undetermined"]:
-            data_quality_issue = True
-            findings.append(f"{row['checkpoint']}: {m['eligibility']['undetermined']} observations have undetermined "
-                            "eligibility (mark as recommended / followed / search).")
-        if m["eligibility"].get("conflicts"):
-            data_quality_issue = True
-            findings.append(f"{row['checkpoint']}: {m['eligibility']['conflicts']} observations have conflicting "
-                            "eligibility evidence (followed-account marker vs. 'recommended').")
-    if data_quality_issue:
+    quality = _data_quality_findings(summary)
+    findings.extend(quality)
+    if quality:
         status = "review_data"
 
     current = latest["metrics"]["direct_share"] if latest else baseline["direct_share"]

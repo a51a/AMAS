@@ -35,6 +35,7 @@ from app.services import (
     unaccept_sample,
 )
 from app.storage.repository import NotFound, Repository
+from app.strategist.rules import intervention_gate
 
 router = APIRouter(prefix="/api")
 
@@ -345,16 +346,16 @@ def action_catalog(experiment_id: str, request: Request):
 def create_intervention(experiment_id: str, body: InterventionCreate, request: Request):
     r = repo(request)
     exp = _nf(r.get_experiment, experiment_id)
-    readiness = compute_summary(r, experiment_id)["baseline_readiness"]
+    gate = intervention_gate(compute_summary(r, experiment_id), r.list_interventions(experiment_id))
     parameters = dict(body.parameters)
-    if not readiness["ready"]:
+    if not gate["open"]:
         reason = (body.override_reason or "").strip()
         if not body.override_baseline_check:
-            raise HTTPException(409, {"message": "Baseline is not ready for a T1 intervention.",
-                                      "problems": readiness["problems"]})
+            raise HTTPException(409, {"message": "Baseline or review data is not ready for a T1 intervention.",
+                                      "problems": gate["problems"]})
         if not reason:
             raise HTTPException(400, "override_reason is required when override_baseline_check is true.")
-        parameters["baseline_override"] = {"reason": reason, "problems": readiness["problems"], "at": utcnow()}
+        parameters["baseline_override"] = {"reason": reason, "problems": gate["problems"], "at": utcnow()}
     try:
         act = get_actuator(body.actuator, adapter_for(exp["platform"]))
         values = act.plan(exp, body.action_type, parameters, body.description)

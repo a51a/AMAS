@@ -20,6 +20,8 @@ and explicit acceptance before the strategist may suggest a T1 intervention.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 from collections import Counter
 from datetime import datetime
 from typing import Any, Iterable
@@ -69,11 +71,27 @@ def sample_readiness(observations: list[dict], required_reels: int) -> dict[str,
             "complete": not problems, "problems": problems}
 
 
+# Fields whose change after acceptance invalidates the accepted sample (C2, D-023).
+REVISION_FIELDS = ("observation_id", "sequence_number", "video_offset_seconds", "segment_end_seconds",
+                   "target_match", "topic_label", "recommendation_status", "is_ad", "review_status",
+                   "eligibility_conflict", "followed_signal")
+
+
+def sample_revision(observations: list[dict]) -> str:
+    """Stable fingerprint of the reviewed content of a sample. Any boundary edit, relabel, reclassification,
+    eligibility or conflict change, or added/deleted observation produces a different revision."""
+    rows = [[o.get(k) for k in REVISION_FIELDS]
+            for o in sorted(observations, key=lambda o: (o.get("sequence_number") or 0, o.get("observation_id")))]
+    return "rev1:" + hashlib.sha256(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()[:24]
+
+
 def baseline_readiness(experiment: dict, sessions: list[dict], observations: list[dict]) -> dict[str, Any]:
     """Is the T0 baseline good enough to plan a T1 intervention?
 
-    A T0 session counts when it is explicitly accepted and either meets the protocol or carries a recorded
-    deviation note. Requirements come from the experiment config (defaults: 2 sessions x 50 Reels).
+    A T0 session counts when it is explicitly accepted, its data is unchanged since acceptance (same revision),
+    and it either meets the protocol or every current problem is covered by the deviation recorded at
+    acceptance. Readiness also needs a measurable primary baseline: at least one eligible exposure across
+    the counted samples (C4). Requirements come from the experiment config (defaults: 2 sessions x 50 Reels).
     """
     cfg = experiment.get("config") or {}
     required_sessions = int(cfg.get("baseline_sessions") or 2)
@@ -85,16 +103,29 @@ def baseline_readiness(experiment: dict, sessions: list[dict], observations: lis
     for s in sorted(sessions, key=lambda s: (s.get("captured_at") or "", s.get("created_at") or "")):
         if s.get("checkpoint") != "T0":
             continue
-        r = sample_readiness(by_session.get(s["session_id"], []), required_reels)
+        obs = by_session.get(s["session_id"], [])
+        r = sample_readiness(obs, required_reels)
         accepted = s.get("sample_status") == "accepted"
         deviation = (s.get("deviation_note") or "").strip() or None
-        counts = accepted and r["observations"] > 0 and (r["complete"] or deviation is not None)
+        scope = list(s.get("deviation_scope") or [])
+        revision = sample_revision(obs)
+        unchanged = bool(s.get("accepted_revision")) and s.get("accepted_revision") == revision
+        covered = r["complete"] or (deviation is not None and set(r["problems"]) <= set(scope))
+        counts = accepted and r["observations"] > 0 and unchanged and covered
         rows.append({"session_id": s["session_id"], "label": s.get("label"), "accepted": accepted,
-                     "accepted_at": s.get("accepted_at"), "deviation_note": deviation, "counts": counts, **r})
-    counted = sum(1 for r in rows if r["counts"])
+                     "accepted_at": s.get("accepted_at"), "deviation_note": deviation, "deviation_scope": scope,
+                     "revision": revision, "unchanged_since_acceptance": unchanged,
+                     "eligible_exposures": sum(1 for o in obs if is_eligible(o)), "counts": counts, **r})
+    counted_rows = [r for r in rows if r["counts"]]
+    counted = len(counted_rows)
+    eligible = sum(r["eligible_exposures"] for r in counted_rows)
     problems = []
     if counted < required_sessions:
         problems.append(f"{counted} of {required_sessions} required T0 baseline sessions are accepted and complete.")
+    elif eligible == 0:
+        problems.append("The accepted T0 samples contain no eligible recommendation exposures (only ads, followed "
+                        "accounts, search results or conflicts), so the primary baseline share is undefined. "
+                        "Collect or review more baseline data.")
     for r in rows:
         if r["counts"]:
             continue
@@ -104,17 +135,21 @@ def baseline_readiness(experiment: dict, sessions: list[dict], observations: lis
             problems.append(f"T0 {name}: not accepted yet ({detail}).")
         elif r["observations"] == 0:
             problems.append(f"T0 {name}: accepted but empty.")
+        elif not r["unchanged_since_acceptance"]:
+            problems.append(f"T0 {name}: data changed since acceptance (or accepted before revision tracking); "
+                            f"review and accept it again ({detail}).")
         else:
-            problems.append(f"T0 {name}: accepted but incomplete ({detail}); accept again with a deviation note "
-                            "or fix the sample.")
+            problems.append(f"T0 {name}: accepted but incomplete ({detail}); the recorded deviation does not cover "
+                            "this. Fix the sample or accept it again with a deviation note.")
     return {
-        "ready": counted >= required_sessions,
+        "ready": counted >= required_sessions and eligible > 0,
         "required_sessions": required_sessions,
         "required_reels": required_reels,
         "counted_sessions": counted,
+        "eligible_exposures": eligible,
         "sessions": rows,
         "deviations": [{"session_id": r["session_id"], "note": r["deviation_note"], "problems": r["problems"]}
-                       for r in rows if r["counts"] and not r["complete"]],
+                       for r in counted_rows if not r["complete"]],
         "problems": problems,
     }
 

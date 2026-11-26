@@ -147,3 +147,41 @@ request sets `override_baseline_check` with an `override_reason` (stored in the 
 parameters). The pooled baseline metric itself is unchanged. Demo T0 samples are accepted
 with the deviation note "Simulated demo data; not human-reviewed."
 
+## D-022 · Only a genuinely unedited legacy profile is upgraded (C1, 2026-11-26)
+Supersedes the upgrade trigger in D-019. Sprint 1's complete topic list is kept in
+`experiments/EXP-001-biathlon/profile-topics-v1.json`. On startup the stored EXP-001/demo profile
+is replaced with the shipped topics (as a new version) only if every topic and every field,
+after normalising defaults, equals that file. Any edit (adjacent keywords, added topics,
+weights, descriptions, context keywords) leaves the active profile untouched on every
+restart. Edited legacy profiles stay safe because mock v2 already treats ambiguous legacy
+keywords as context only. Observations are never relabelled.
+
+## D-023 · Acceptance is bound to a data revision and a deviation scope (C2, 2026-11-26)
+Schema v3 adds `observation_sessions.accepted_revision` and `deviation_scope`. Accepting a
+sample stores a fingerprint of its reviewed content (IDs, order, intervals, labels,
+eligibility, ad state, review status, conflict and followed flags) and, for a deviation,
+exactly the problems the note covered. A sample counts only while its revision is unchanged
+and every current problem is in the recorded scope. Any boundary edit, reclassification,
+relabel, conflict or added/deleted observation therefore requires renewed acceptance
+(a new problem needs a new deviation note). Sessions accepted under schema v2 have no revision
+and must be accepted again. One pure function, `intervention_gate`, now decides for both the
+strategist and `POST /interventions`: before the first completed intervention, baseline
+readiness and any open review item in any session block planning unless an override with a
+reason is recorded.
+
+## D-024 · Boundary audit trail kept apart from machine evidence (C3, 2026-11-26)
+Schema v3 adds `content_observations.boundary_history` (JSON list). Each boundary change that
+keeps a row's ID appends `{at, method, old, new, previous_labels, absorbed[...]}` and carries
+the absorbed rows' own histories, so chained merges stay auditable after absorbed rows are
+deleted. Classification never touches it, and also keeps evidence notes that start with
+"Boundaries changed", "Corrected by human reviewer" or "Eligibility conflict". It is exported
+in JSON and as a JSON string column in CSV.
+
+## D-025 · Readiness needs a measurable primary baseline (C4, 2026-11-26)
+Readiness additionally requires at least one eligible exposure across the counted T0 samples;
+otherwise the baseline direct share is undefined and the strategist stays on
+`collect_baseline`. The 2 x 50 exposure protocol, the eligibility definition and the
+UNKNOWN-in-denominator rule are unchanged. The existing recorded override remains available.
+Which T0 samples form the primary analysis baseline (pooled metrics still use all T0
+sessions) is an open founder decision raised in PR-003, not changed here.
+

@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -72,6 +72,8 @@ CREATE TABLE IF NOT EXISTS observation_sessions (
     sample_status      TEXT NOT NULL DEFAULT 'provisional',
     accepted_at        TEXT,
     deviation_note     TEXT,
+    accepted_revision  TEXT,
+    deviation_scope    TEXT,
     notes              TEXT NOT NULL DEFAULT '',
     is_demo            INTEGER NOT NULL DEFAULT 0,
     created_at         TEXT NOT NULL
@@ -112,6 +114,7 @@ CREATE TABLE IF NOT EXISTS content_observations (
     followed_signal         INTEGER,
     eligibility_source      TEXT,
     eligibility_conflict    INTEGER NOT NULL DEFAULT 0,
+    boundary_history        TEXT NOT NULL DEFAULT '[]',
     content_fingerprint     TEXT,
     classifier_version      TEXT,
     machine_label_json      TEXT,
@@ -163,21 +166,26 @@ JSON_COLUMNS = {
     "snapshot_json",
     "machine_label_json",
     "segmentation_json",
+    "boundary_history",
+    "deviation_scope",
 }
 BOOL_COLUMNS = {"is_demo", "is_ad", "external_provider_consent", "followed_signal", "eligibility_conflict"}
 
-# Columns added after schema v1 (D-017). Older databases receive them through additive
+# Columns added after schema v1 (D-017, D-023, D-024). Older databases receive them through additive
 # ALTER TABLE statements on open; existing rows and values are never rewritten.
 MIGRATION_COLUMNS = {
     "observation_sessions": {
         "sample_status": "TEXT NOT NULL DEFAULT 'provisional'",
         "accepted_at": "TEXT",
         "deviation_note": "TEXT",
+        "accepted_revision": "TEXT",  # v3 (D-023)
+        "deviation_scope": "TEXT",  # v3 (D-023)
     },
     "content_observations": {
         "followed_signal": "INTEGER",
         "eligibility_source": "TEXT",
         "eligibility_conflict": "INTEGER NOT NULL DEFAULT 0",
+        "boundary_history": "TEXT NOT NULL DEFAULT '[]'",  # v3 (D-024)
     },
 }
 

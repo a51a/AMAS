@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 from app.config import Settings
-from app.models.schemas import RecommendationStatus, ReviewStatus, TargetMatch
+from app.models.schemas import RecommendationStatus, ReviewStatus, TargetMatch, utcnow
 from app.observer import media
 from app.observer.classifiers.base import ClassificationInput, Classifier
 from app.observer.classifiers.mock import MockClassifier
@@ -108,6 +108,23 @@ def _label_summary(o: dict) -> str:
             f"{o.get('target_match')}/{o.get('recommendation_status')}/{o.get('review_status')}")
 
 
+_LABEL_FIELDS = ("observation_id", "target_match", "topic_label", "recommendation_status", "is_ad",
+                 "review_status", "classifier_version", "eligibility_source", "eligibility_conflict")
+
+
+# Evidence written by boundary edits, human review or eligibility checks is provenance, not machine output:
+# a new classification keeps it (C3, D-024). The structured record lives in boundary_history.
+PRESERVED_EVIDENCE_PREFIXES = ("Boundaries changed", "Corrected by human reviewer", "Eligibility conflict")
+
+
+def _preserved_evidence(o: dict) -> list[str]:
+    return [e for e in (o.get("classification_evidence") or []) if e.startswith(PRESERVED_EVIDENCE_PREFIXES)]
+
+
+def _label_record(o: dict) -> dict:
+    return {k: o.get(k) for k in _LABEL_FIELDS}
+
+
 def _write_segments(repo: Repository, session_id: str, segments, method: str) -> list[dict]:
     """Reconcile new segment boundaries with existing observations (R1, D-018).
 
@@ -155,8 +172,15 @@ def _write_segments(repo: Repository, session_id: str, segments, method: str) ->
                 f"{(match.get('segment_end_seconds') or 0):.2f}s to {start:.2f}-{end:.2f}s; re-review required.")
         if absorbed:
             note += " Absorbed: " + "; ".join(_label_summary(o) for o in absorbed) + "."
+        # Durable audit trail, kept apart from replaceable machine evidence (C3, D-024).
+        entry = {"at": utcnow(), "method": method,
+                 "old": [match["video_offset_seconds"], match.get("segment_end_seconds")], "new": [start, end],
+                 "previous_labels": _label_record(match),
+                 "absorbed": [{**_label_record(o), "interval": [o["video_offset_seconds"], o.get("segment_end_seconds")],
+                               "boundary_history": o.get("boundary_history") or []} for o in absorbed]}
         values = {"observation_id": match["observation_id"], "segment_end_seconds": end, **frame_values,
                   "segmentation_method": method,
+                  "boundary_history": (match.get("boundary_history") or []) + [entry],
                   "classification_evidence": (match.get("classification_evidence") or []) + [note]}
         if match["review_status"] != ReviewStatus.PENDING.value:
             values["review_status"] = ReviewStatus.NEEDS_REVIEW.value
@@ -244,7 +268,8 @@ def classify_session(repo: Repository, settings: Settings, session_id: str, clas
             "target_match": r.target_match.value,
             "topic_label": r.topic_label,
             "confidence": r.confidence,
-            "classification_evidence": r.evidence + ([f"OCR text: {ocr_text[:200]}"] if ocr_text else []),
+            "classification_evidence": r.evidence + ([f"OCR text: {ocr_text[:200]}"] if ocr_text else [])
+            + _preserved_evidence(o),
             "classifier_version": r.classifier_version,
             "review_status": review.value,
             "machine_label_json": {"target_match": r.target_match.value, "topic_label": r.topic_label,
@@ -260,6 +285,7 @@ def classify_session(repo: Repository, settings: Settings, session_id: str, clas
             values["is_ad"] = True
         if r.followed_indicator is True:
             values.update(_followed_signal_values(o, values["classification_evidence"]))
+        values["classification_evidence"] = list(dict.fromkeys(values["classification_evidence"]))
         repo.update_observation(o["observation_id"], values)
         counts["classified"] += 1
         counts["needs_review"] += review == ReviewStatus.NEEDS_REVIEW

@@ -60,9 +60,13 @@ always works.
 6. When all 50 Reels are human-reviewed (`confirmed` / `corrected`) and every Reel has a
    resolved eligibility, click **Accept as baseline sample…**. An incomplete sample can only
    be accepted with a written protocol deviation, which is stored and shown on the experiment
-   page and in exports.
+   page and in exports. Acceptance is tied to the exact data you reviewed: any later edit
+   (boundaries, labels, eligibility, reclassification, added or deleted Reels) shows
+   *changed since acceptance* and the sample must be accepted again; a new problem needs a
+   new deviation note.
 7. Repeat for `Baseline B` (second T0 session). The experiment page shows **Baseline
-   readiness**. Until 2 accepted T0 samples of 50 Reels exist, the strategist keeps you on
+   readiness**. Until 2 accepted T0 samples of 50 Reels exist and they contain at least one
+   eligible recommendation (not only ads, followed accounts or search results), the strategist keeps you on
    `collect_baseline`, suggests no intervention, and the API refuses to plan a T1 action
    unless you tick *Plan despite the incomplete baseline* and record a reason.
 
