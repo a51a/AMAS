@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from app.adapters.base import PlatformAdapter
 from app.models.schemas import CHECKPOINT_OFFSETS_HOURS
 
-STRATEGIST_VERSION = "rules-v1"
+STRATEGIST_VERSION = "rules-v2"
 
 
 def _pct(x: float | None) -> str:
@@ -28,11 +28,19 @@ def _rec(adapter: PlatformAdapter, action_type: str, priority: str, rationale: s
     }
 
 
+def _readiness(summary: dict) -> dict:
+    return summary.get("baseline_readiness") or {"ready": False, "required_sessions": 2, "required_reels": 50,
+                                                 "problems": ["Baseline readiness was not computed."]}
+
+
 def next_checkpoint(summary: dict, interventions: list[dict]) -> dict | None:
     done = {t["checkpoint"] for t in summary["trend"]}
-    if summary["baseline_session_count"] < 2:
-        return {"checkpoint": "T0", "due_at": None, "note": "Record baseline sessions (2 x 50 Reels)."}
     completed = [a for a in interventions if a["status"] in ("completed", "simulated") and a.get("completed_at")]
+    ready = _readiness(summary)
+    if not completed and not ready["ready"]:
+        return {"checkpoint": "T0", "due_at": None,
+                "note": f"Record, review and accept the baseline ({ready['required_sessions']} x "
+                        f"{ready['required_reels']} Reels)."}
     if not completed:
         return {"checkpoint": "T1", "due_at": None, "note": "Perform and log the intervention."}
     anchor = min(datetime.fromisoformat(a["completed_at"]) for a in completed)
@@ -54,10 +62,16 @@ def build_plan(experiment: dict, summary: dict, interventions: list[dict], adapt
     latest = summary.get("latest")
     nxt = next_checkpoint(summary, interventions)
 
-    if baseline is None or summary["baseline_session_count"] < 2:
+    readiness = _readiness(summary)
+    completed_any = any(a["status"] in ("completed", "simulated") for a in interventions)
+    if baseline is None or (not readiness["ready"] and not completed_any):
         status = "collect_baseline"
-        findings.append("Baseline incomplete. The protocol needs two T0 sessions of 50 Reels before any intervention.")
+        findings.append(f"Baseline not ready. The protocol needs {readiness['required_sessions']} accepted T0 "
+                        f"sessions of {readiness['required_reels']} human-reviewed Reels before any intervention.")
+        findings.extend(readiness["problems"])
         return _plan(experiment, status, findings, recs, nxt, summary)
+    if not readiness["ready"]:
+        findings.append("Baseline was not ready when the intervention was logged; results are a protocol deviation.")
 
     findings.append(f"Baseline direct {topic} share: {_pct(baseline['direct_share'])} "
                     f"over {baseline['exposures_eligible']} eligible exposures.")
@@ -73,6 +87,10 @@ def build_plan(experiment: dict, summary: dict, interventions: list[dict], adapt
             data_quality_issue = True
             findings.append(f"{row['checkpoint']}: {m['eligibility']['undetermined']} observations have undetermined "
                             "eligibility (mark as recommended / followed / search).")
+        if m["eligibility"].get("conflicts"):
+            data_quality_issue = True
+            findings.append(f"{row['checkpoint']}: {m['eligibility']['conflicts']} observations have conflicting "
+                            "eligibility evidence (followed-account marker vs. 'recommended').")
     if data_quality_issue:
         status = "review_data"
 
@@ -81,8 +99,11 @@ def build_plan(experiment: dict, summary: dict, interventions: list[dict], adapt
     adjacent = (latest or {"metrics": baseline})["metrics"]["shares"].get("adjacent") or 0
     completed = [a for a in interventions if a["status"] in ("completed", "simulated")]
 
-    if not completed:
-        status = "intervene" if status != "review_data" else status
+    if not completed and status == "review_data":
+        findings.append("Resolve the review items above before planning an intervention.")
+        nxt = {"checkpoint": "REVIEW", "due_at": None, "note": "Review flagged observations, then re-check the plan."}
+    elif not completed:
+        status = "intervene"
         findings.append(f"No intervention yet. Gap to the {_pct(target)} target: {gap * 100:.1f} pp.")
         recs.append(_rec(adapter, "search_and_watch_target", "high",
                          "Strongest documented signal you can create yourself: deliberate search and full watches.",

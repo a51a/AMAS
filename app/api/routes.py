@@ -19,11 +19,21 @@ from app.models.schemas import (
     ProfileUpdate,
     RecommendationStatus,
     SessionCreate,
+    utcnow,
 )
 from app.observer import pipeline
 from app.observer.media import MediaError
 from app.observer.classifiers.ocr import ocr_available
-from app.services import compute_plan, compute_summary, dumps, export_csv, export_json
+from app.services import (
+    ProtocolError,
+    accept_sample,
+    compute_plan,
+    compute_summary,
+    dumps,
+    export_csv,
+    export_json,
+    unaccept_sample,
+)
 from app.storage.repository import NotFound, Repository
 
 router = APIRouter(prefix="/api")
@@ -233,13 +243,27 @@ class BulkEligibility(BaseModel):
 @router.post("/sessions/{session_id}/eligibility")
 def bulk_eligibility(session_id: str, body: BulkEligibility, request: Request):
     r = repo(request)
-    n = 0
-    for o in r.list_observations(session_id=session_id):
-        if body.only_undetermined and o["recommendation_status"] != "undetermined":
-            continue
-        r.update_observation(o["observation_id"], {"recommendation_status": body.recommendation_status.value})
-        n += 1
-    return {"updated": n}
+    _nf(r.get_session, session_id)
+    return pipeline.bulk_set_eligibility(r, session_id, body.recommendation_status.value,
+                                         only_undetermined=body.only_undetermined)
+
+
+class AcceptSample(BaseModel):
+    accepted: bool = True
+    deviation_note: str | None = None
+
+
+@router.post("/sessions/{session_id}/accept")
+def accept_session(session_id: str, body: AcceptSample, request: Request):
+    """Explicitly accept a sample for the protocol (R4). Incomplete samples need a recorded deviation note."""
+    r = repo(request)
+    _nf(r.get_session, session_id)
+    if not body.accepted:
+        return unaccept_sample(r, session_id)
+    try:
+        return accept_sample(r, session_id, deviation_note=body.deviation_note)
+    except ProtocolError as e:
+        raise HTTPException(409, {"message": str(e), "problems": e.problems})
 
 
 @router.post("/sessions/{session_id}/observations")
@@ -321,9 +345,19 @@ def action_catalog(experiment_id: str, request: Request):
 def create_intervention(experiment_id: str, body: InterventionCreate, request: Request):
     r = repo(request)
     exp = _nf(r.get_experiment, experiment_id)
+    readiness = compute_summary(r, experiment_id)["baseline_readiness"]
+    parameters = dict(body.parameters)
+    if not readiness["ready"]:
+        reason = (body.override_reason or "").strip()
+        if not body.override_baseline_check:
+            raise HTTPException(409, {"message": "Baseline is not ready for a T1 intervention.",
+                                      "problems": readiness["problems"]})
+        if not reason:
+            raise HTTPException(400, "override_reason is required when override_baseline_check is true.")
+        parameters["baseline_override"] = {"reason": reason, "problems": readiness["problems"], "at": utcnow()}
     try:
         act = get_actuator(body.actuator, adapter_for(exp["platform"]))
-        values = act.plan(exp, body.action_type, body.parameters, body.description)
+        values = act.plan(exp, body.action_type, parameters, body.description)
     except ActuatorUnavailable as e:
         raise HTTPException(403, str(e))
     except KeyError as e:

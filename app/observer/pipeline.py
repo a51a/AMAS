@@ -96,23 +96,74 @@ def extract_and_segment(repo: Repository, settings: Settings, session_id: str) -
     return repo.update_session(session_id, {"status": "segmented"})
 
 
+BOUNDARY_TOLERANCE = 1e-3
+
+
+def _same(a: float | None, b: float | None) -> bool:
+    return a is not None and b is not None and abs(a - b) <= BOUNDARY_TOLERANCE
+
+
+def _label_summary(o: dict) -> str:
+    return (f"{o['observation_id']} [{o['video_offset_seconds']:.2f}-{(o.get('segment_end_seconds') or 0):.2f}s] "
+            f"{o.get('target_match')}/{o.get('recommendation_status')}/{o.get('review_status')}")
+
+
 def _write_segments(repo: Repository, session_id: str, segments, method: str) -> list[dict]:
+    """Reconcile new segment boundaries with existing observations (R1, D-018).
+
+    - Same start and end: the observation keeps its ID, labels, eligibility, ad state, review status and
+      provenance; only frame-derived fields are refreshed.
+    - Same start, different end (merge or split of this Reel): keeps its ID and labels as evidence but is
+      sent back to review (`needs_review`).
+    - Anything else is a new, pending observation. Old rows that no longer start a segment are removed.
+    Everything is applied in one transaction.
+    """
     frames = repo.list_frames(session_id)
-    rows = []
+    existing = repo.list_observations(session_id=session_id)
+    timed = [o for o in existing if o.get("video_offset_seconds") is not None]
+    untimed = [o for o in existing if o.get("video_offset_seconds") is None]
+    used: set[str] = set()
+    plan: list[tuple[str, dict]] = []
     for seg in segments:
         rep = frames[seg.representative_index]
-        rows.append({
-            "video_offset_seconds": round(seg.start_seconds, 3),
-            "segment_end_seconds": round(seg.end_seconds, 3),
+        start, end = round(seg.start_seconds, 3), round(seg.end_seconds, 3)
+        frame_values = {
             "frame_count": len(seg.frame_indices),
             "representative_frame_id": rep["frame_id"],
             "content_fingerprint": f"ahash:{rep['ahash']}" if rep.get("ahash") else None,
-            "target_match": TargetMatch.UNKNOWN.value,
-            "recommendation_status": RecommendationStatus.UNDETERMINED.value,
-            "review_status": ReviewStatus.PENDING.value,
-            "segmentation_method": method,
-        })
-    return repo.replace_observations(session_id, rows)
+        }
+        match = next((o for o in timed if o["observation_id"] not in used
+                      and _same(o["video_offset_seconds"], start)), None)
+        if match is None:
+            plan.append(("new", {
+                "video_offset_seconds": start,
+                "segment_end_seconds": end,
+                **frame_values,
+                "target_match": TargetMatch.UNKNOWN.value,
+                "recommendation_status": RecommendationStatus.UNDETERMINED.value,
+                "review_status": ReviewStatus.PENDING.value,
+                "segmentation_method": method,
+            }))
+            continue
+        used.add(match["observation_id"])
+        if _same(match.get("segment_end_seconds"), end):
+            plan.append(("keep", {"observation_id": match["observation_id"], **frame_values}))
+            continue
+        absorbed = [o for o in timed if o["observation_id"] != match["observation_id"]
+                    and start - BOUNDARY_TOLERANCE <= o["video_offset_seconds"] < end - BOUNDARY_TOLERANCE]
+        note = (f"Boundaries changed ({method}) from {match['video_offset_seconds']:.2f}-"
+                f"{(match.get('segment_end_seconds') or 0):.2f}s to {start:.2f}-{end:.2f}s; re-review required.")
+        if absorbed:
+            note += " Absorbed: " + "; ".join(_label_summary(o) for o in absorbed) + "."
+        values = {"observation_id": match["observation_id"], "segment_end_seconds": end, **frame_values,
+                  "segmentation_method": method,
+                  "classification_evidence": (match.get("classification_evidence") or []) + [note]}
+        if match["review_status"] != ReviewStatus.PENDING.value:
+            values["review_status"] = ReviewStatus.NEEDS_REVIEW.value
+        plan.append(("update", values))
+    plan += [("keep", {"observation_id": o["observation_id"]}) for o in untimed]
+    delete_ids = [o["observation_id"] for o in timed if o["observation_id"] not in used]
+    return repo.apply_segment_plan(session_id, plan, delete_ids)
 
 
 def _current_boundaries(repo: Repository, session_id: str) -> tuple[list[dict], list[float]]:
@@ -207,13 +258,56 @@ def classify_session(repo: Repository, settings: Settings, session_id: str, clas
             values["creator_handle"] = r.creator_handle
         if r.is_ad is True:
             values["is_ad"] = True
-        if r.followed_indicator is True and o["recommendation_status"] == RecommendationStatus.UNDETERMINED:
-            values["recommendation_status"] = RecommendationStatus.FOLLOWED_ACCOUNT.value
+        if r.followed_indicator is True:
+            values.update(_followed_signal_values(o, values["classification_evidence"]))
         repo.update_observation(o["observation_id"], values)
         counts["classified"] += 1
         counts["needs_review"] += review == ReviewStatus.NEEDS_REVIEW
     repo.update_session(session_id, {"status": "classified"})
     return counts
+
+
+ELIGIBILITY_CLASSIFIER = "classifier"
+ELIGIBILITY_BULK = "bulk_assumption"
+ELIGIBILITY_HUMAN = "human_review"
+
+
+def _followed_signal_values(o: dict, evidence: list[str]) -> dict:
+    """A followed-account marker was detected (R3). Never silently keep the row eligible and never silently
+    overwrite an explicit status: undetermined rows become followed_account; recommended rows get a conflict."""
+    values: dict = {"followed_signal": True}
+    status = o.get("recommendation_status")
+    if status == RecommendationStatus.UNDETERMINED:
+        values["recommendation_status"] = RecommendationStatus.FOLLOWED_ACCOUNT.value
+        values["eligibility_source"] = ELIGIBILITY_CLASSIFIER
+    elif status == RecommendationStatus.RECOMMENDED:
+        values["eligibility_conflict"] = True
+        values["classification_evidence"] = evidence + [
+            f"Eligibility conflict: followed-account marker detected but status is 'recommended' "
+            f"(source: {o.get('eligibility_source') or 'unrecorded'}). Excluded from the primary metric until a "
+            "human sets the status for this Reel."]
+    return values
+
+
+def bulk_set_eligibility(repo: Repository, session_id: str, status: str, *, only_undetermined: bool = True) -> dict:
+    """Session-wide eligibility assumption (e.g. 'everything I scrolled was recommended').
+
+    Rows with a detected followed-account marker are flagged as conflicts instead of silently becoming eligible.
+    """
+    updated = conflicts = 0
+    for o in repo.list_observations(session_id=session_id):
+        if only_undetermined and o["recommendation_status"] != RecommendationStatus.UNDETERMINED:
+            continue
+        conflict = bool(o.get("followed_signal")) and status == RecommendationStatus.RECOMMENDED
+        values = {"recommendation_status": status, "eligibility_source": ELIGIBILITY_BULK,
+                  "eligibility_conflict": conflict}
+        if conflict:
+            values["classification_evidence"] = (o.get("classification_evidence") or []) + [
+                "Eligibility conflict: bulk 'recommended' applied to a Reel with a detected followed-account marker."]
+            conflicts += 1
+        repo.update_observation(o["observation_id"], values)
+        updated += 1
+    return {"updated": updated, "conflicts": conflicts}
 
 
 def apply_correction(repo: Repository, observation_id: str, patch: dict) -> dict:
@@ -222,6 +316,10 @@ def apply_correction(repo: Repository, observation_id: str, patch: dict) -> dict
     confirm = patch.pop("confirm", False)
     values = {k: v for k, v in patch.items() if v is not None}
     label_changed = any(k in values and values[k] != o.get(k) for k in ("target_match", "topic_label"))
+    if "recommendation_status" in values:
+        # An explicit per-Reel human ruling is authoritative and resolves any eligibility conflict.
+        values["eligibility_source"] = ELIGIBILITY_HUMAN
+        values["eligibility_conflict"] = False
     if label_changed:
         values["review_status"] = ReviewStatus.CORRECTED.value
         values["confidence"] = 1.0

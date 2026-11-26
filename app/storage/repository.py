@@ -310,6 +310,45 @@ class Repository:
             self.add_observation(session_id, {**r, "sequence_number": i})
         return self.list_observations(session_id=session_id)
 
+    def apply_segment_plan(self, session_id: str, plan: list[tuple[str, dict]], delete_ids: list[str]) -> list[dict]:
+        """Apply a boundary reconciliation in ONE transaction (all or nothing).
+
+        plan: ordered (action, values) pairs; action "keep"/"update" carries observation_id, "new" inserts.
+        delete_ids: observations absorbed by a merge.
+        """
+        s = self.get_session(session_id)
+        now = utcnow()
+        from app.storage.db import _encode
+
+        with self.db.tx() as c:
+            for oid in delete_ids:
+                c.execute("DELETE FROM content_observations WHERE observation_id = ? AND session_id = ?",
+                          (oid, session_id))
+            for seq, (action, values) in enumerate(plan, start=1):
+                values = dict(values)
+                if action == "new":
+                    row = {"observation_id": new_id("obs"), "experiment_id": s["experiment_id"],
+                           "session_id": session_id, "platform": s["platform"], "surface": s["surface"],
+                           "is_demo": s["is_demo"], "created_at": now, "updated_at": now,
+                           **values, "sequence_number": seq}
+                    cols = list(row)
+                    c.execute(f"INSERT INTO content_observations ({', '.join(cols)}) VALUES "
+                              f"({', '.join('?' * len(cols))})", [_encode(k, row[k]) for k in cols])
+                else:
+                    oid = values.pop("observation_id")
+                    values.update({"sequence_number": seq, "updated_at": now})
+                    cols = list(values)
+                    cur = c.execute(
+                        f"UPDATE content_observations SET {', '.join(f'{k} = ?' for k in cols)} "
+                        "WHERE observation_id = ? AND session_id = ?",
+                        [_encode(k, values[k]) for k in cols] + [oid, session_id])
+                    if cur.rowcount != 1:
+                        raise RuntimeError(f"observation {oid} changed during reconciliation")
+            c.execute("UPDATE observation_sessions SET observation_count = "
+                      "(SELECT COUNT(*) FROM content_observations WHERE session_id = ?) WHERE session_id = ?",
+                      (session_id, session_id))
+        return self.list_observations(session_id=session_id)
+
     def renumber(self, session_id: str) -> None:
         obs = self.list_observations(session_id=session_id)
         with self.db.tx() as c:

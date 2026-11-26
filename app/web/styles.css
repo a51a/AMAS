@@ -84,6 +84,8 @@ h2 { font-size: 15px; margin: 28px 0 10px; }
 .pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--surface-2); color: var(--text-2); border: 1px solid var(--border); }
 .pill.demo { background: var(--demo-bg); color: var(--demo-ink); border-color: transparent; }
 .pill.real { color: var(--ok); }
+.pill.warn { background: var(--warn-bg); color: var(--warn-ink); border-color: transparent; }
+.banner:not(.demo):not(.warn) { background: var(--surface-2); color: var(--text-2); }
 
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }

@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS observation_sessions (
     observation_count  INTEGER NOT NULL DEFAULT 0,
     status             TEXT NOT NULL DEFAULT 'created',
     segmentation_json  TEXT,
+    sample_status      TEXT NOT NULL DEFAULT 'provisional',
+    accepted_at        TEXT,
+    deviation_note     TEXT,
     notes              TEXT NOT NULL DEFAULT '',
     is_demo            INTEGER NOT NULL DEFAULT 0,
     created_at         TEXT NOT NULL
@@ -106,6 +109,9 @@ CREATE TABLE IF NOT EXISTS content_observations (
     creator_handle          TEXT,
     recommendation_status   TEXT NOT NULL DEFAULT 'undetermined',
     is_ad                   INTEGER,
+    followed_signal         INTEGER,
+    eligibility_source      TEXT,
+    eligibility_conflict    INTEGER NOT NULL DEFAULT 0,
     content_fingerprint     TEXT,
     classifier_version      TEXT,
     machine_label_json      TEXT,
@@ -158,7 +164,22 @@ JSON_COLUMNS = {
     "machine_label_json",
     "segmentation_json",
 }
-BOOL_COLUMNS = {"is_demo", "is_ad", "external_provider_consent"}
+BOOL_COLUMNS = {"is_demo", "is_ad", "external_provider_consent", "followed_signal", "eligibility_conflict"}
+
+# Columns added after schema v1 (D-017). Older databases receive them through additive
+# ALTER TABLE statements on open; existing rows and values are never rewritten.
+MIGRATION_COLUMNS = {
+    "observation_sessions": {
+        "sample_status": "TEXT NOT NULL DEFAULT 'provisional'",
+        "accepted_at": "TEXT",
+        "deviation_note": "TEXT",
+    },
+    "content_observations": {
+        "followed_signal": "INTEGER",
+        "eligibility_source": "TEXT",
+        "eligibility_conflict": "INTEGER NOT NULL DEFAULT 0",
+    },
+}
 
 
 def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
@@ -185,10 +206,18 @@ class Database:
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute("PRAGMA journal_mode = WAL") if self.path != ":memory:" else None
         self._conn.executescript(SCHEMA)
-        self._conn.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)", (str(SCHEMA_VERSION),)
-        )
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        for table, cols in MIGRATION_COLUMNS.items():
+            existing = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            for col, ddl in cols.items():
+                if col not in existing:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+        self._conn.execute(
+            "INSERT INTO meta(key, value) VALUES ('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value", (str(SCHEMA_VERSION),))
 
     @contextmanager
     def tx(self) -> Iterator[sqlite3.Connection]:

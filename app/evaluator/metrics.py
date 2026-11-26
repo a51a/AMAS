@@ -11,7 +11,12 @@ Eligible exposure = recommendation_status == 'recommended' AND not an identified
 Unknown topic classifications stay in the denominator. Ads, search results and
 followed-account content are excluded. Exposures whose eligibility is
 'undetermined' are excluded from the primary metric, flagged, and covered by a
-separate all-exposure metric.
+separate all-exposure metric. Exposures with an unresolved eligibility conflict
+(e.g. marked recommended but a followed-account marker was detected, R3) are
+treated the same way until a human resolves them.
+
+Baseline readiness (R4) checks the T0 protocol (sessions x Reels, review state)
+and explicit acceptance before the strategist may suggest a T1 intervention.
 """
 from __future__ import annotations
 
@@ -21,7 +26,7 @@ from typing import Any, Iterable
 
 from app.evaluator.stats import hamming_hex, newcombe_diff_interval, wilson_interval
 
-METRIC_VERSION = "eval-v1"
+METRIC_VERSION = "eval-v2"
 AHASH_PREFIX = "ahash:"
 AHASH_MAX_DISTANCE = 6
 TARGET_LABELS = ("direct", "adjacent", "unrelated", "unknown")
@@ -35,8 +40,83 @@ CAVEATS = [
 ]
 
 
+HUMAN_REVIEWED = ("confirmed", "corrected")
+
+
 def is_eligible(o: dict) -> bool:
-    return o.get("recommendation_status") == "recommended" and not o.get("is_ad")
+    return (o.get("recommendation_status") == "recommended" and not o.get("is_ad")
+            and not o.get("eligibility_conflict"))
+
+
+def sample_readiness(observations: list[dict], required_reels: int) -> dict[str, Any]:
+    """Protocol completeness of one sample: size, human review and resolved eligibility."""
+    n = len(observations)
+    unreviewed = sum(1 for o in observations if o.get("review_status") not in HUMAN_REVIEWED)
+    undetermined = sum(1 for o in observations if (o.get("recommendation_status") or "undetermined") == "undetermined")
+    conflicts = sum(1 for o in observations if o.get("eligibility_conflict"))
+    unknown_ad = sum(1 for o in observations if o.get("is_ad") is None)
+    problems = []
+    if n < required_reels:
+        problems.append(f"{n} of {required_reels} Reels recorded")
+    if unreviewed:
+        problems.append(f"{unreviewed} observations not human-reviewed (confirm or correct each one)")
+    if undetermined:
+        problems.append(f"{undetermined} observations have undetermined eligibility")
+    if conflicts:
+        problems.append(f"{conflicts} observations have an unresolved eligibility conflict")
+    return {"observations": n, "required_reels": required_reels, "unreviewed": unreviewed,
+            "undetermined": undetermined, "conflicts": conflicts, "unknown_ad_status": unknown_ad,
+            "complete": not problems, "problems": problems}
+
+
+def baseline_readiness(experiment: dict, sessions: list[dict], observations: list[dict]) -> dict[str, Any]:
+    """Is the T0 baseline good enough to plan a T1 intervention?
+
+    A T0 session counts when it is explicitly accepted and either meets the protocol or carries a recorded
+    deviation note. Requirements come from the experiment config (defaults: 2 sessions x 50 Reels).
+    """
+    cfg = experiment.get("config") or {}
+    required_sessions = int(cfg.get("baseline_sessions") or 2)
+    required_reels = int(cfg.get("reels_per_sample") or 50)
+    by_session: dict[str, list[dict]] = {}
+    for o in observations:
+        by_session.setdefault(o["session_id"], []).append(o)
+    rows = []
+    for s in sorted(sessions, key=lambda s: (s.get("captured_at") or "", s.get("created_at") or "")):
+        if s.get("checkpoint") != "T0":
+            continue
+        r = sample_readiness(by_session.get(s["session_id"], []), required_reels)
+        accepted = s.get("sample_status") == "accepted"
+        deviation = (s.get("deviation_note") or "").strip() or None
+        counts = accepted and r["observations"] > 0 and (r["complete"] or deviation is not None)
+        rows.append({"session_id": s["session_id"], "label": s.get("label"), "accepted": accepted,
+                     "accepted_at": s.get("accepted_at"), "deviation_note": deviation, "counts": counts, **r})
+    counted = sum(1 for r in rows if r["counts"])
+    problems = []
+    if counted < required_sessions:
+        problems.append(f"{counted} of {required_sessions} required T0 baseline sessions are accepted and complete.")
+    for r in rows:
+        if r["counts"]:
+            continue
+        name = r["label"] or r["session_id"]
+        detail = "; ".join(r["problems"]) or "complete"
+        if not r["accepted"]:
+            problems.append(f"T0 {name}: not accepted yet ({detail}).")
+        elif r["observations"] == 0:
+            problems.append(f"T0 {name}: accepted but empty.")
+        else:
+            problems.append(f"T0 {name}: accepted but incomplete ({detail}); accept again with a deviation note "
+                            "or fix the sample.")
+    return {
+        "ready": counted >= required_sessions,
+        "required_sessions": required_sessions,
+        "required_reels": required_reels,
+        "counted_sessions": counted,
+        "sessions": rows,
+        "deviations": [{"session_id": r["session_id"], "note": r["deviation_note"], "problems": r["problems"]}
+                       for r in rows if r["counts"] and not r["complete"]],
+        "problems": problems,
+    }
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -88,6 +168,7 @@ def sample_metrics(observations: list[dict]) -> dict[str, Any]:
     status_counts = Counter(o.get("recommendation_status") or "undetermined" for o in observations)
     n_ads = sum(1 for o in observations if o.get("is_ad"))
     n_undetermined = status_counts.get("undetermined", 0)
+    n_conflicts = sum(1 for o in observations if o.get("eligibility_conflict"))
     review_counts = Counter(o.get("review_status") or "pending" for o in observations)
 
     direct = counts.get("direct", 0)
@@ -126,6 +207,7 @@ def sample_metrics(observations: list[dict]) -> dict[str, Any]:
             "identified_ads": n_ads,
             "undetermined_rate": _share(n_undetermined, n_all),
             "flag_undetermined": n_undetermined > 0,
+            "conflicts": n_conflicts,
         },
         "review": {
             "pending": review_counts.get("pending", 0),
@@ -259,18 +341,25 @@ def experiment_summary(
             "retention_of_T2_lift": round(retention, 3) if retention is not None else None,
         })
 
+    readiness = baseline_readiness(experiment, sessions, observations)
     target_share = experiment.get("target_share")
     latest_share = latest["metrics"]["direct_share"] if latest else None
     warnings = []
     if baseline is None:
         warnings.append("No T0 baseline sessions yet.")
-    elif sum(1 for s in ordered if s["checkpoint"] == "T0") < 2:
-        warnings.append("Protocol requires two T0 baseline sessions; fewer recorded.")
+    if not readiness["ready"]:
+        warnings.append("Baseline not ready for an intervention: " + " ".join(readiness["problems"]))
+    for d in readiness["deviations"]:
+        warnings.append(f"Protocol deviation accepted for T0 {d['session_id']}: {d['note']}")
     for r in per_session:
         m = r["metrics"]
         if m["eligibility"]["flag_undetermined"]:
             warnings.append(f"{r['checkpoint']} {r['session_id']}: {m['eligibility']['undetermined']} exposures have "
                             "undetermined eligibility and are excluded from the primary metric (see all-exposure metric).")
+        if m["eligibility"]["conflicts"]:
+            warnings.append(f"{r['checkpoint']} {r['session_id']}: {m['eligibility']['conflicts']} exposures have "
+                            "conflicting eligibility evidence (e.g. followed-account marker on a 'recommended' row) "
+                            "and are excluded from the primary metric until reviewed.")
         if m["unknown_rate"] and m["unknown_rate"] > 0.2:
             warnings.append(f"{r['checkpoint']} {r['session_id']}: unknown classification rate "
                             f"{m['unknown_rate']:.0%} is high; review observations.")
@@ -283,6 +372,7 @@ def experiment_summary(
         "target_share": target_share,
         "baseline": baseline,
         "baseline_session_count": sum(1 for s in ordered if s["checkpoint"] == "T0"),
+        "baseline_readiness": readiness,
         "latest": {"session_id": latest["session_id"], "checkpoint": latest["checkpoint"],
                    "metrics": latest["metrics"], "vs_baseline": latest["vs_baseline"]} if latest else None,
         "target_reached": (latest_share >= target_share) if (latest_share is not None and target_share) else None,

@@ -21,6 +21,10 @@
   The review is not an implementation fix. Founder approval is required for merges.
 - Full findings, reproduction, priorities, and acceptance criteria:
   [PR-001 review and handoff](testing-reports/2026-11-26/PR-001.md).
+- R1–R4 fixes from Claude Code cloud: branch `claude/r1-r4-measurement-integrity`, PR to
+  `codex/cto-review-exp001`, awaiting founder review (not merged). 67 tests passed on
+  synthetic inputs only; see [CLAUDE-R1-R4](testing-reports/2026-11-26/CLAUDE-R1-R4.md).
+  After merge, existing T0 sessions start `provisional` and must be reviewed and accepted.
 
 ## Sprint 1 (this release): local MVP
 Observer (recording import, frames, segmentation, mock + pluggable vision classifier, manual review),
@@ -28,8 +32,9 @@ Taste Engine (versioned profiles, EXP-001), Evaluation Engine, rules-based Strat
 Manual/Mock actuators, Instagram manual adapter, Control Center, CSV/JSON export.
 
 ## Next
-1. **Measurement integrity before T1**: resolve R1–R4 in the review (destructive boundary
-   edits, unsafe topic heuristics, eligibility conflicts, and incomplete-baseline gating).
+1. **Measurement integrity before T1**: R1–R4 (destructive boundary edits, unsafe topic
+   heuristics, eligibility conflicts, incomplete-baseline gating) are fixed in a pending PR;
+   review and merge it, then re-verify locally.
 2. **Accept the real baseline**: review local BASELINE-001 boundaries and labels; preserve
    capture/analysis provenance; obtain the remaining protocol baseline samples. Establish
    a human boundary reference before tuning the detector (R9). Keep current data provisional.
