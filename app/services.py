@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from app.adapters.registry import adapter_for
-from app.evaluator.metrics import METRIC_VERSION, experiment_summary, sample_readiness
+from app.evaluator.metrics import METRIC_VERSION, experiment_summary, sample_readiness, sample_revision
 from app.models.schemas import utcnow
 from app.strategist.rules import build_plan
 from app.storage.repository import Repository
@@ -17,7 +17,8 @@ EXPORT_COLUMNS = [
     "observed_at", "video_offset_seconds", "segment_end_seconds", "topic_label", "target_match", "confidence",
     "classification_evidence", "caption_text", "hashtags", "creator_handle", "recommendation_status", "is_ad",
     "content_fingerprint", "classifier_version", "review_status", "segmentation_method", "is_demo", "notes",
-    "followed_signal", "eligibility_source", "eligibility_conflict", "sample_status", "deviation_note",
+    "followed_signal", "eligibility_source", "eligibility_conflict", "boundary_history", "sample_status",
+    "deviation_note",
 ]
 
 
@@ -49,20 +50,25 @@ def accept_sample(repo: Repository, session_id: str, *, deviation_note: str | No
     s = repo.get_session(session_id)
     exp = repo.get_experiment(s["experiment_id"])
     required = int((exp.get("config") or {}).get("reels_per_sample") or 50)
-    check = sample_readiness(repo.list_observations(session_id=session_id), required)
+    observations = repo.list_observations(session_id=session_id)
+    check = sample_readiness(observations, required)
     note = (deviation_note or "").strip() or None
     if check["observations"] == 0:
         raise ProtocolError("An empty sample cannot be accepted.", check["problems"])
     if not check["complete"] and note is None:
         raise ProtocolError("Sample does not meet the protocol. Fix it or accept it with a deviation_note that "
                             "explains the deviation.", check["problems"])
+    # Acceptance is bound to this data revision and, for a deviation, to exactly these problems (C2, D-023).
     return repo.update_session(session_id, {"sample_status": "accepted", "accepted_at": utcnow(),
-                                            "deviation_note": None if check["complete"] else note})
+                                            "deviation_note": None if check["complete"] else note,
+                                            "deviation_scope": [] if check["complete"] else check["problems"],
+                                            "accepted_revision": sample_revision(observations)})
 
 
 def unaccept_sample(repo: Repository, session_id: str) -> dict:
     return repo.update_session(session_id, {"sample_status": "provisional", "accepted_at": None,
-                                            "deviation_note": None})
+                                            "deviation_note": None, "deviation_scope": None,
+                                            "accepted_revision": None})
 
 
 def compute_plan(repo: Repository, experiment_id: str) -> dict:
@@ -98,6 +104,7 @@ def export_csv(repo: Repository, experiment_id: str) -> str:
         row["deviation_note"] = sessions[o["session_id"]].get("deviation_note")
         row["classification_evidence"] = " | ".join(o.get("classification_evidence") or [])
         row["hashtags"] = " ".join(o.get("hashtags") or [])
+        row["boundary_history"] = json.dumps(o.get("boundary_history") or [], ensure_ascii=False)
         w.writerow(row)
     return buf.getvalue()
 

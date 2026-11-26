@@ -205,7 +205,7 @@ function sampleBadge(ss) {
 
 function readinessHtml(r) {
   if (!r) return "";
-  const rows = r.sessions.map((x) => `<li>${esc(x.label || x.session_id)}: ${x.observations}/${x.required_reels} Reels · ${x.unreviewed} not human-reviewed · ${x.undetermined} undetermined · ${x.conflicts} conflicts · ${x.accepted ? (x.deviation_note ? "accepted with deviation" : "accepted") : "not accepted"}${x.counts ? " ✓" : ""}</li>`).join("");
+  const rows = r.sessions.map((x) => `<li>${esc(x.label || x.session_id)}: ${x.observations}/${x.required_reels} Reels · ${x.unreviewed} not human-reviewed · ${x.undetermined} undetermined · ${x.conflicts} conflicts · ${x.eligible_exposures} eligible · ${x.accepted ? (x.unchanged_since_acceptance ? (x.deviation_note ? "accepted with deviation" : "accepted") : "changed since acceptance: accept again") : "not accepted"}${x.counts ? " ✓" : ""}</li>`).join("");
   return `<div class="banner ${r.ready ? "" : "warn"}" style="margin-top:12px"><b>Baseline readiness: ${r.ready ? "ready" : "not ready"}</b> (${r.counted_sessions} of ${r.required_sessions} T0 sessions × ${r.required_reels} Reels accepted)
     ${r.ready ? "" : `<br>${r.problems.map(esc).join("<br>")}`}${rows ? `<ul style="margin:6px 0 0">${rows}</ul>` : ""}</div>`;
 }
@@ -283,7 +283,9 @@ async function viewSession(sid) {
     ${ready ? `<div class="card row"><b>Baseline sample</b> ${sampleBadge(s)}
       <span class="muted">${ready.observations}/${ready.required_reels} Reels · ${ready.unreviewed} not human-reviewed · ${ready.undetermined} undetermined · ${ready.conflicts} conflicts · ${ready.unknown_ad_status} with unknown ad status</span>
       ${s.deviation_note ? `<span class="muted">Deviation: ${esc(s.deviation_note)}</span>` : ""}
+      ${s.sample_status === "accepted" && !ready.unchanged_since_acceptance ? `<span class="pill warn">changed since acceptance</span>` : ""}
       <span class="grow"></span>
+      ${s.sample_status === "accepted" && !ready.unchanged_since_acceptance ? `<button id="accept" class="primary">Accept again…</button>` : ""}
       ${s.sample_status === "accepted" ? `<button id="unaccept">Withdraw acceptance</button>` : `<button id="accept" class="primary">Accept as baseline sample…</button>`}</div>` : ""}
     ${isManual ? quickLogHtml() : ""}
     <div class="card">${obs.map((o) => obsHtml(o, d.frame_count)).join("") || `<p class="muted">No observations${reviewFilter !== "all" ? " match this filter" : ""}.</p>`}</div>
@@ -349,6 +351,7 @@ function obsHtml(o, hasFrames) {
         <label class="f grow">Visible caption / hashtags (type only what you can read)<input data-f="caption_text" value="${esc(o.caption_text || "")}"></label>
       </div>
       <div class="evidence">${(o.classification_evidence || []).map(esc).join(" · ")}</div>
+      ${(o.boundary_history || []).length ? `<div class="evidence">Boundary history: ${o.boundary_history.map((h) => `${esc(h.method)} ${secs(h.old[0])}–${secs(h.old[1])} → ${secs(h.new[0])}–${secs(h.new[1])}${h.absorbed.length ? ` (absorbed ${h.absorbed.map((a) => esc(a.observation_id)).join(", ")})` : ""}`).join(" · ")}</div>` : ""}
       <div class="row">
         <button class="small primary" data-act="save">Save</button>
         <button class="small" data-act="confirm">Confirm label</button>

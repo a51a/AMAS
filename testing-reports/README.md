@@ -3,18 +3,23 @@
 Claude Code and Codex: start here before engineering work. Claude Code works in the cloud
 from the GitHub repository; Codex performs private research in the founder's local lab/AMAS
 folder. Shared reports live on GitHub branches. Read AGENTS.md and preserve uncommitted work.
-The current handoff is on `codex/cto-review-exp001`; do not assume it is already on main.
+PRs #2 and #3 are merged. Start with the independent PR #3 review below; the next
+handoff is on `codex/pr3-independent-review`. ROADMAP.md remains the shared backlog.
 
 | Date | Report | Use |
 |---|---|---|
-| 2026-11-26 | [R1–R4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-R1-R4.md) | Synthetic regression results for the R1–R4 fix branch (PR to `codex/cto-review-exp001`); R5–R9 still open |
-| 2026-11-26 | [Cloud engineering handoff](2026-11-26/CLOUD-HANDOFF.md) | Start here in Claude Code cloud: branch, scope, commands and deliverables |
-| 2026-11-26 | [PR #1 independent review and engineering handoff](2026-11-26/PR-001.md) | Open R1–R9 findings, priority, reproduction and acceptance criteria |
-| 2026-11-26 | [Verification after relocation](2026-11-26/VERIFICATION.md) | Current test commands, environment and limitations |
+| 2026-11-26 | [C1–C4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-C1-C4.md) | Latest: synthetic regression results for the C1–C4 fix PR (targets `codex/pr3-independent-review`); awaiting founder review |
+| 2026-11-26 | [PR #3 independent review and next tasks](2026-11-26/PR-003.md) | 67 tests passed locally; C1–C4 reproduced; next cloud handoff |
+| 2026-11-26 | [R1–R4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-R1-R4.md) | Historical implementation report for merged PR #3; independent follow-up above |
+| 2026-11-26 | [Cloud engineering handoff](2026-11-26/CLOUD-HANDOFF.md) | Historical first cloud assignment; superseded for next work by PR-003 |
+| 2026-11-26 | [PR #1 independent review and engineering handoff](2026-11-26/PR-001.md) | Original R1–R9 findings; current disposition is in PR-003 |
+| 2026-11-26 | [Verification after relocation](2026-11-26/VERIFICATION.md) | Historical relocation verification |
 | 2026-11-26 | Local-only: `private/2026-11-26/BASELINE-001.md` | Private measured results; deliberately unavailable to cloud agents |
 
-The review findings remain open until the R1–R4 fix PR is reviewed and merged by the founder;
-R5–R9 are not addressed yet. Passing tests does not mean real-data validation. The baseline remains provisional and all images must stay on-device.
+R1–R4 core reproductions are improved. C1–C4 fixes are in a pending PR (not merged);
+they need founder review and an independent recheck. R5–R9 remain open.
+Passing tests does not mean real-data validation. The baseline remains provisional and
+all images must stay on-device.
 See [ROADMAP.md](../ROADMAP.md) for the shared backlog.
 
 ## Report convention

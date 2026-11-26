@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from app.models.schemas import ExperimentCreate, InterestProfile, TargetMatch
+from app.models.schemas import ExperimentCreate, InterestProfile, ProfileTopic, TargetMatch
 from app.storage.repository import Repository
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -27,14 +27,32 @@ LEGACY_V1_BIATHLON_KEYWORDS = frozenset({
     "biathlon", "biathlete", "ibu", "ibu world cup", "biathlonworld", "биатлон", "биатлонист",
     "biathlon world cup", "rifle range", "shooting range ski", "pursuit", "mass start", "relay biathlon",
 })
+# The complete topic list Sprint 1 shipped (commit e170928). Only a byte-for-byte unedited copy is upgraded.
+LEGACY_V1_TOPICS_FILE = EXP001_CONFIG.parent / "profile-topics-v1.json"
+
+
+def _normalized_topics(topics: list[dict]) -> list[dict]:
+    return [ProfileTopic(**t).model_dump(mode="json") for t in topics]
+
+
+def legacy_v1_topics() -> list[dict]:
+    return _normalized_topics(json.loads(LEGACY_V1_TOPICS_FILE.read_text(encoding="utf-8")))
+
+
+def is_unedited_legacy_profile(profile: dict) -> bool:
+    """True only if every topic and every field equals what Sprint 1 shipped (C1, D-022)."""
+    try:
+        return _normalized_topics(profile.get("topics") or []) == legacy_v1_topics()
+    except ValueError:
+        return False
 
 
 def upgrade_legacy_profile(repo: Repository, shipped: InterestProfile) -> dict:
-    """If a stored profile still has the exact Sprint 1 biathlon keyword set, save the shipped topics as a
-    new profile version. Profiles the user edited are left alone; existing observations are not relabelled."""
+    """Save the shipped topics as a new profile version only when the stored profile is a genuinely unedited
+    Sprint 1 copy. Any user edit (any topic, field, weight, description, added topic) leaves the profile alone;
+    the mock classifier still treats ambiguous legacy keywords as context only. Observations are not relabelled."""
     current = repo.get_profile(shipped.profile_id)
-    direct = next((t for t in current["topics"] if t.get("topic_id") == "biathlon"), None)
-    if direct is None or set(direct.get("keywords") or []) != LEGACY_V1_BIATHLON_KEYWORDS:
+    if not is_unedited_legacy_profile(current):
         return current
     return repo.update_profile(shipped.profile_id, {"topics": [t.model_dump(mode="json") for t in shipped.topics]})
 
