@@ -1,0 +1,66 @@
+{
+  "experiment": {
+    "experiment_id": "EXP-001",
+    "name": "Operation Biathlon",
+    "research_question": "Can a previously established recommendation system develop a measurable new topic preference that does not reflect the account owner's existing interests?",
+    "platform": "instagram",
+    "surface": "reels_desktop_web",
+    "profile_id": "PRF-EXP-001-biathlon",
+    "target_topic": "biathlon",
+    "target_share": 0.20,
+    "is_demo": false,
+    "config": {
+      "subject": "Founder's existing personal Instagram account (algorithm NOT reset)",
+      "reels_per_sample": 50,
+      "baseline_sessions": 2,
+      "checkpoints": {
+        "T0": "Two baseline sessions of 50 Reels each",
+        "T1": "Documented intervention",
+        "T2": "Immediate post-intervention sample of 50 Reels",
+        "T3": "24-hour sample (50 Reels)",
+        "T4": "72-hour sample (50 Reels)",
+        "T5": "Seven-day sample (50 Reels)"
+      },
+      "observation_rules": [
+        "Observe only the Reels recommendation surface (desktop web).",
+        "Do not count search results or deliberately opened creator profiles.",
+        "Mark identifiable ads and followed-account content; they are excluded from the primary metric."
+      ],
+      "hypothesis_note": "The 20% target is a research hypothesis, not an expected or guaranteed result."
+    }
+  },
+  "profile": {
+    "profile_id": "PRF-EXP-001-biathlon",
+    "name": "EXP-001 Biathlon",
+    "description": "Target information environment for Operation Biathlon: at least 20% direct biathlon content on Instagram Reels.",
+    "topics": [
+      {
+        "topic_id": "biathlon",
+        "label": "Biathlon",
+        "description": "DIRECT: biathlon competitions; biathlon athletes in a biathlon context; biathlon skiing and shooting; Biathlon World Cup and IBU content.",
+        "tier": "direct",
+        "polarity": "positive",
+        "target_weight": 0.20,
+        "keywords": ["biathlon", "biathlete", "ibu", "ibu world cup", "biathlonworld", "биатлон", "биатлонист", "biathlon world cup", "rifle range", "shooting range ski", "pursuit", "mass start", "relay biathlon"]
+      },
+      {
+        "topic_id": "cross_country_skiing",
+        "label": "Cross-country skiing",
+        "description": "ADJACENT: cross-country skiing without biathlon shooting.",
+        "tier": "adjacent",
+        "polarity": "positive",
+        "target_weight": null,
+        "keywords": ["cross-country skiing", "cross country skiing", "xc ski", "xcski", "nordic skiing", "langlauf", "лыжные гонки", "fis cross-country"]
+      },
+      {
+        "topic_id": "winter_sports",
+        "label": "Winter sports / Winter Olympics",
+        "description": "ADJACENT: winter sports and Winter Olympics content without a specific biathlon focus.",
+        "tier": "adjacent",
+        "polarity": "positive",
+        "target_weight": null,
+        "keywords": ["winter olympics", "olympic winter", "milano cortina", "ski jumping", "alpine skiing", "snowboard", "winter sports", "nordic combined", "зимние виды спорта"]
+      }
+    ]
+  }
+}
