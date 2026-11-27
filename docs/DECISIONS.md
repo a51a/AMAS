@@ -222,3 +222,13 @@ The intervention screen renders its problems (baseline readiness and, before T1,
 items in any checkpoint) and disables Create until the founder ticks an explicit exception box
 and gives a non-empty reason, which the API stores with the blocking problems. The API gate
 (409 without override, 400 without reason) is unchanged and remains authoritative.
+
+## D-029 · Reviewed UNKNOWN has no confidence; time-to-first-target carries its time provenance (V1/V2, 2026-11-27)
+Completes D-026 and D-027 after the PR #7 review. Confirming an UNKNOWN label (`{confirm: true}`)
+sets the exposed `confidence` to null, as a correction to UNKNOWN already did; the machine value
+stays in `machine_label_json` (copied there first if an older row lacks it). Edits that neither
+change the label nor confirm it keep omitted-field semantics. Time-to-first-target now reports
+the exposure time it used (`observed_at`, else session capture time plus video offset), its source,
+whether that value or the intervention anchor was a legacy naive timestamp read as UTC, and
+`time_verified`. Any such assumption adds a warning. Stored values are not rewritten and no
+timezone is inferred.

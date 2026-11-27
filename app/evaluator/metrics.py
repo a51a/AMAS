@@ -281,12 +281,29 @@ def _first_intervention_time(interventions: list[dict]) -> datetime | None:
 
 
 def _obs_time(session: dict, o: dict) -> datetime | None:
+    return _obs_time_info(session, o)["time"]
+
+
+def _obs_time_info(session: dict, o: dict) -> dict[str, Any]:
+    """Exposure time used for time-to-first-target, with its provenance (V2, D-029).
+
+    Prefers the observation's own `observed_at`; otherwise the session capture time plus the video offset.
+    `timezone_assumed_utc` is true when the value actually used was a legacy naive timestamp read as UTC.
+    """
     if o.get("observed_at"):
-        return _parse_dt(o["observed_at"])
-    base = _parse_dt(session.get("captured_at"))
+        t, assumed = parse_stored_timestamp(o["observed_at"])
+        if t is not None:
+            return {"time": t, "source": "observed_at", "timezone_assumed_utc": assumed,
+                    "verified": not assumed}
+    base, assumed = parse_stored_timestamp(session.get("captured_at"))
+    info = capture_time_info(session)
+    source = "session_captured_at" + ("+video_offset" if o.get("video_offset_seconds") is not None else "")
+    if o.get("observed_at"):
+        source += " (observed_at unparseable)"
     if base and o.get("video_offset_seconds") is not None:
-        return base + timedelta(seconds=float(o["video_offset_seconds"]))
-    return base
+        base = base + timedelta(seconds=float(o["video_offset_seconds"]))
+    return {"time": base, "source": source, "timezone_assumed_utc": assumed,
+            "verified": base is not None and info["capture_time_verified"]}
 
 
 def experiment_summary(
@@ -355,7 +372,11 @@ def experiment_summary(
                 break
         if found:
             s, o = found
-            t = _obs_time(session_index[s["session_id"]], o)
+            when = _obs_time_info(session_index[s["session_id"]], o)
+            t = when["time"]
+            anchor_assumed = any(parse_stored_timestamp(a.get("completed_at"))[1] for a in interventions
+                                 if a.get("status") in ("completed", "simulated") and a.get("completed_at")
+                                 and _parse_dt(a.get("completed_at")) == anchor)
             ttf = {
                 "measurable": True,
                 "intervention_completed_at": anchor.isoformat(),
@@ -364,6 +385,11 @@ def experiment_summary(
                 "sequence_number": o.get("sequence_number"),
                 "eligible_exposures_before_first": exposures_before,
                 "hours_after_intervention": round((t - anchor).total_seconds() / 3600, 2) if t else None,
+                "exposure_time_used": t.isoformat() if t else None,
+                "exposure_time_source": when["source"],
+                "exposure_timezone_assumed_utc": when["timezone_assumed_utc"],
+                "intervention_timezone_assumed_utc": anchor_assumed,
+                "time_verified": bool(t) and when["verified"] and not anchor_assumed,
                 "note": "Wall-clock time is bounded by when samples were taken; the first target item may "
                         "have appeared earlier between sessions.",
             }
@@ -417,6 +443,15 @@ def experiment_summary(
     if assumed:
         warnings.append(f"{len(assumed)} stored timestamps have no timezone (legacy input) and were read as UTC: "
                         + ", ".join(assumed) + ".")
+    if ttf.get("measurable") and (ttf["exposure_timezone_assumed_utc"] or ttf["intervention_timezone_assumed_utc"]):
+        parts = []
+        if ttf["exposure_timezone_assumed_utc"]:
+            parts.append(f"the exposure time ({ttf['exposure_time_source']}) of {ttf['session_id']} "
+                         f"#{ttf['sequence_number']}")
+        if ttf["intervention_timezone_assumed_utc"]:
+            parts.append("the intervention completion time")
+        warnings.append("Time to first target is unverified: " + " and ".join(parts) + " has no timezone "
+                        "(legacy input) and was read as UTC; the hours may be off by the local UTC offset.")
     for r in per_session:
         if r["checkpoint"] in ("T2", "T3", "T4", "T5"):
             if r["hours_after_intervention"] is None:

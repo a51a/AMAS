@@ -409,4 +409,13 @@ def apply_correction(repo: Repository, observation_id: str, patch: dict) -> dict
             values["confidence"] = None if resulting_match == TargetMatch.UNKNOWN else confidence
         if confirm:
             values["review_status"] = ReviewStatus.CONFIRMED.value
+            if resulting_match == TargetMatch.UNKNOWN:
+                # V1 (D-029): a human-reviewed UNKNOWN exposes no confidence, whichever action reviewed it.
+                values["confidence"] = None
+    if values.get("confidence", o.get("confidence")) is None and o.get("confidence") is not None:
+        # Clearing the exposed confidence never loses the machine's value.
+        machine = dict(o.get("machine_label_json") or {})
+        if "confidence" not in machine and o.get("classifier_version") != "human-manual":
+            machine["confidence"] = o["confidence"]
+            values["machine_label_json"] = machine
     return repo.update_observation(observation_id, values)
