@@ -8,7 +8,8 @@ handoff is on `codex/pr5-independent-review`. ROADMAP.md remains the shared back
 
 | Date | Report | Use |
 |---|---|---|
-| 2026-11-27 | [PR #5 independent verification and next tasks](2026-11-27/PR-005.md) | Latest: 98 tests passed; C1–C4 verified; N1 UI follow-up; next R5/R6 task |
+| 2026-11-27 | [R5, R6 and N1 fixes, Claude Code cloud run](2026-11-27/CLAUDE-R5-R6-N1.md) | Latest implementation: 132 tests passed (synthetic); awaits independent Codex verification; R7–R9 open |
+| 2026-11-27 | [PR #5 independent verification and next tasks](2026-11-27/PR-005.md) | Latest independent review: 98 tests passed; C1–C4 verified; N1 UI follow-up; R5/R6 task |
 | 2026-11-26 | [C1–C4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-C1-C4.md) | Historical implementation report for merged PR #5; independent verification above |
 | 2026-11-26 | [PR #3 independent review and next tasks](2026-11-26/PR-003.md) | Historical C1–C4 findings and their reproductions; disposition is in PR-005 |
 | 2026-11-26 | [R1–R4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-R1-R4.md) | Historical implementation report for merged PR #3; independent follow-up above |
@@ -18,7 +19,8 @@ handoff is on `codex/pr5-independent-review`. ROADMAP.md remains the shared back
 | 2026-11-26 | Local-only: `private/2026-11-26/BASELINE-001.md` | Private measured results; deliberately unavailable to cloud agents |
 
 R1–R4 core reproductions remain improved and C1–C4 are independently verified in PR #5.
-R5–R9 and the N1 UI/API parity follow-up remain open. Next cloud batch: R5/R6/N1.
+R5, R6 and N1 are implemented in the CLAUDE-R5-R6-N1 report and await independent
+verification. R7–R9 remain open.
 Passing tests does not mean real-data validation. The baseline remains provisional and
 all images must stay on-device.
 See [ROADMAP.md](../ROADMAP.md) for the shared backlog.
