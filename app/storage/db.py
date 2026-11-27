@@ -12,7 +12,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Iterator
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
@@ -74,6 +74,9 @@ CREATE TABLE IF NOT EXISTS observation_sessions (
     deviation_note     TEXT,
     accepted_revision  TEXT,
     deviation_scope    TEXT,
+    captured_at_source TEXT,
+    imported_at        TEXT,
+    recording_created_at TEXT,
     notes              TEXT NOT NULL DEFAULT '',
     is_demo            INTEGER NOT NULL DEFAULT 0,
     created_at         TEXT NOT NULL
@@ -171,7 +174,7 @@ JSON_COLUMNS = {
 }
 BOOL_COLUMNS = {"is_demo", "is_ad", "external_provider_consent", "followed_signal", "eligibility_conflict"}
 
-# Columns added after schema v1 (D-017, D-023, D-024). Older databases receive them through additive
+# Columns added after schema v1 (D-017, D-023, D-024, D-027). Older databases receive them through additive
 # ALTER TABLE statements on open; existing rows and values are never rewritten.
 MIGRATION_COLUMNS = {
     "observation_sessions": {
@@ -180,6 +183,10 @@ MIGRATION_COLUMNS = {
         "deviation_note": "TEXT",
         "accepted_revision": "TEXT",  # v3 (D-023)
         "deviation_scope": "TEXT",  # v3 (D-023)
+        # v4 (D-027): capture-time provenance. Legacy rows keep NULL = "not recorded"; values are never rewritten.
+        "captured_at_source": "TEXT",
+        "imported_at": "TEXT",
+        "recording_created_at": "TEXT",
     },
     "content_observations": {
         "followed_signal": "INTEGER",

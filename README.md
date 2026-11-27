@@ -68,9 +68,14 @@ always works.
    readiness**. Until 2 accepted T0 samples of 50 Reels exist and they contain at least one
    eligible recommendation (not only ads, followed accounts or search results), the strategist keeps you on
    `collect_baseline`, suggests no intervention, and the API refuses to plan a T1 action
-   unless you tick *Plan despite the incomplete baseline* and record a reason.
+   unless you tick the exception box on the intervention screen and record a reason. The
+   screen lists exactly what blocks planning, including unreviewed observations outside T0.
 
 CLI alternative: `python -m app.cli import ~/Movies/rec.mov --checkpoint T0 --label "Baseline A"`.
+Add `--captured-at 2026-11-27T09:30:00+00:00` (timezone required) when you know when the feed was
+recorded. Without it AMAS uses the recording's creation metadata; if there is none, the session
+creation time is used and flagged as an unverified capture time. Import time is stored separately
+(D-027). Post-intervention samples show their actual hours after the intervention.
 
 No recording? Create a **manual session** and log each Reel with the keys `D`, `A`, `U`, `?`.
 

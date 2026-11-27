@@ -38,9 +38,19 @@ def cmd_seed_demo(a):
     print(f"Seeded {exp['experiment_id']} (SIMULATED demo data, is_demo=1).")
 
 
+def _timestamp_arg(value: str) -> str:
+    from app.models.schemas import normalize_timestamp
+
+    try:
+        return normalize_timestamp(value, field="--captured-at")
+    except ValueError as e:
+        raise argparse.ArgumentTypeError(str(e)) from None
+
+
 def cmd_new_session(a):
     r = _repo()
-    s = r.create_session(a.experiment, checkpoint=a.checkpoint, capture_method="screen_recording", label=a.label or "")
+    s = r.create_session(a.experiment, checkpoint=a.checkpoint, capture_method="screen_recording", label=a.label or "",
+                         captured_at=a.captured_at)
     print(s["session_id"])
 
 
@@ -52,9 +62,10 @@ def cmd_import(a):
     if not sid:
         sid = r.create_session(a.experiment, checkpoint=a.checkpoint, capture_method="screen_recording",
                                label=a.label or Path(a.path).name)["session_id"]
-    s = import_recording(r, get_settings(), sid, Path(a.path).expanduser())
+    s = import_recording(r, get_settings(), sid, Path(a.path).expanduser(), captured_at=a.captured_at)
     print(json.dumps({"session_id": sid, "observations": s["observation_count"],
-                      "duration_seconds": s["recording_duration_seconds"]}, indent=2))
+                      "duration_seconds": s["recording_duration_seconds"], "captured_at": s["captured_at"],
+                      "captured_at_source": s["captured_at_source"], "imported_at": s["imported_at"]}, indent=2))
 
 
 def cmd_classify(a):
@@ -100,12 +111,16 @@ def main(argv: list[str] | None = None) -> int:
     sp = sub.add_parser("new-session", help="Create an observation session")
     sp.add_argument("--experiment", default="EXP-001"), sp.add_argument("--checkpoint", default="T0")
     sp.add_argument("--label")
+    sp.add_argument("--captured-at", type=_timestamp_arg, help="When the feed was recorded, ISO 8601 with timezone, e.g. "
+                    "2026-11-27T09:30:00+00:00. Default: recording metadata, else session creation (flagged).")
     sp.set_defaults(fn=cmd_new_session)
 
     sp = sub.add_parser("import", help="Import a screen recording (MP4/MOV) into a session")
     sp.add_argument("path")
     sp.add_argument("--session"), sp.add_argument("--experiment", default="EXP-001")
     sp.add_argument("--checkpoint", default="T0"), sp.add_argument("--label")
+    sp.add_argument("--captured-at", type=_timestamp_arg, help="When the feed was recorded, ISO 8601 with timezone, e.g. "
+                    "2026-11-27T09:30:00+00:00. Default: recording metadata, else session creation (flagged).")
     sp.set_defaults(fn=cmd_import)
 
     sp = sub.add_parser("classify", help="Classify a session")

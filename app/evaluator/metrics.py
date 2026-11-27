@@ -23,9 +23,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable
 
+from app.models.schemas import CHECKPOINT_OFFSETS_HOURS, VERIFIED_CAPTURE_SOURCES, parse_stored_timestamp
 from app.evaluator.stats import hamming_hex, newcombe_diff_interval, wilson_interval
 
 METRIC_VERSION = "eval-v2"
@@ -100,7 +101,7 @@ def baseline_readiness(experiment: dict, sessions: list[dict], observations: lis
     for o in observations:
         by_session.setdefault(o["session_id"], []).append(o)
     rows = []
-    for s in sorted(sessions, key=lambda s: (s.get("captured_at") or "", s.get("created_at") or "")):
+    for s in sorted(sessions, key=session_order_key):
         if s.get("checkpoint") != "T0":
             continue
         obs = by_session.get(s["session_id"], [])
@@ -155,12 +156,26 @@ def baseline_readiness(experiment: dict, sessions: list[dict], observations: lis
 
 
 def _parse_dt(value: str | None) -> datetime | None:
-    if not value:
-        return None
-    try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
-        return None
+    """Aware UTC datetime for a stored value; legacy naive values are read as UTC (R6, D-027)."""
+    return parse_stored_timestamp(value)[0]
+
+
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def session_order_key(s: dict) -> tuple:
+    """Chronological order by actual instant, not by string: mixed offsets and legacy naive values sort
+    correctly and never raise. Unparseable capture times sort first, then by creation time; ties keep input order."""
+    return (_parse_dt(s.get("captured_at")) or _EPOCH, _parse_dt(s.get("created_at")) or _EPOCH)
+
+
+def capture_time_info(s: dict) -> dict[str, Any]:
+    """Capture-time provenance for one session (D-027)."""
+    source = s.get("captured_at_source")
+    _, assumed = parse_stored_timestamp(s.get("captured_at"))
+    return {"captured_at_source": source or "not_recorded",
+            "capture_time_verified": source in VERIFIED_CAPTURE_SOURCES and not assumed,
+            "timezone_assumed_utc": assumed}
 
 
 def unique_content_count(observations: Iterable[dict]) -> int:
@@ -270,8 +285,6 @@ def _obs_time(session: dict, o: dict) -> datetime | None:
         return _parse_dt(o["observed_at"])
     base = _parse_dt(session.get("captured_at"))
     if base and o.get("video_offset_seconds") is not None:
-        from datetime import timedelta
-
         return base + timedelta(seconds=float(o["video_offset_seconds"]))
     return base
 
@@ -287,12 +300,16 @@ def experiment_summary(
     for o in observations:
         by_session.setdefault(o["session_id"], []).append(o)
 
-    ordered = sorted(sessions, key=lambda s: (s.get("captured_at") or "", s.get("created_at") or ""))
+    ordered = sorted(sessions, key=session_order_key)
+    anchor = _first_intervention_time(interventions)
     per_session = []
     for s in ordered:
         m = sample_metrics(by_session.get(s["session_id"], []))
+        s_time = _parse_dt(s.get("captured_at"))
+        elapsed = round((s_time - anchor).total_seconds() / 3600, 2) if (anchor and s_time) else None
         per_session.append({"session_id": s["session_id"], "checkpoint": s["checkpoint"], "label": s.get("label"),
-                            "captured_at": s.get("captured_at"), "metrics": m})
+                            "captured_at": s.get("captured_at"), **capture_time_info(s),
+                            "hours_after_intervention": elapsed, "metrics": m})
 
     baseline_obs = [o for s in ordered if s["checkpoint"] == "T0" for o in by_session.get(s["session_id"], [])]
     baseline = sample_metrics(baseline_obs) if baseline_obs else None
@@ -316,7 +333,6 @@ def experiment_summary(
     latest = post[-1] if post else None
 
     # Time to first unsolicited target recommendation (post-intervention, eligible only).
-    anchor = _first_intervention_time(interventions)
     ttf: dict[str, Any] = {"measurable": False, "reason": None}
     if anchor is None:
         ttf["reason"] = "No completed intervention recorded yet."
@@ -362,15 +378,24 @@ def experiment_summary(
     t2 = by_cp.get("T2")
     t2_lift = (t2["metrics"]["direct_share"] - b_share) if (t2 and b_share is not None and t2["metrics"]["direct_share"] is not None) else None
     persistence = []
+    # The checkpoint name is a plan, not evidence (R6): report the actual elapsed time and its provenance.
     for cp, horizon in (("T3", "24h"), ("T4", "72h"), ("T5", "7d")):
         r = by_cp.get(cp)
+        nominal = CHECKPOINT_OFFSETS_HOURS[cp]
         if not r or r["metrics"]["direct_share"] is None:
-            persistence.append({"checkpoint": cp, "horizon": horizon, "measured": False})
+            persistence.append({"checkpoint": cp, "horizon": horizon, "nominal_hours": nominal, "measured": False})
             continue
         lift = (r["metrics"]["direct_share"] - b_share) if b_share is not None else None
         retention = (lift / t2_lift) if (lift is not None and t2_lift and t2_lift > 0) else None
+        actual = r["hours_after_intervention"]
         persistence.append({
-            "checkpoint": cp, "horizon": horizon, "measured": True,
+            "checkpoint": cp, "horizon": horizon, "nominal_hours": nominal, "measured": True,
+            "session_id": r["session_id"],
+            "actual_hours_after_intervention": actual,
+            "hours_from_nominal": round(actual - nominal, 2) if actual is not None else None,
+            "captured_before_intervention": actual is not None and actual < 0,
+            "capture_time_verified": r["capture_time_verified"],
+            "captured_at_source": r["captured_at_source"],
             "direct_share": r["metrics"]["direct_share"],
             "change_pp": r["vs_baseline"]["change_pp"],
             "retention_of_T2_lift": round(retention, 3) if retention is not None else None,
@@ -386,6 +411,24 @@ def experiment_summary(
         warnings.append("Baseline not ready for an intervention: " + " ".join(readiness["problems"]))
     for d in readiness["deviations"]:
         warnings.append(f"Protocol deviation accepted for T0 {d['session_id']}: {d['note']}")
+    assumed = [r["session_id"] for r in per_session if r["timezone_assumed_utc"]]
+    assumed += [a.get("action_id") or "intervention" for a in interventions
+                if parse_stored_timestamp(a.get("completed_at"))[1]]
+    if assumed:
+        warnings.append(f"{len(assumed)} stored timestamps have no timezone (legacy input) and were read as UTC: "
+                        + ", ".join(assumed) + ".")
+    for r in per_session:
+        if r["checkpoint"] in ("T2", "T3", "T4", "T5"):
+            if r["hours_after_intervention"] is None:
+                warnings.append(f"{r['checkpoint']} {r['session_id']}: elapsed time since the intervention is unknown "
+                                "(no completed intervention time or no parseable capture time).")
+            elif r["hours_after_intervention"] < 0:
+                warnings.append(f"{r['checkpoint']} {r['session_id']}: captured {-r['hours_after_intervention']:.1f} h "
+                                "before the first completed intervention.")
+            if not r["capture_time_verified"]:
+                warnings.append(f"{r['checkpoint']} {r['session_id']}: capture time comes from "
+                                f"'{r['captured_at_source']}', not from the owner or recording metadata; the "
+                                "elapsed time since the intervention is not verified.")
     for r in per_session:
         m = r["metrics"]
         if m["eligibility"]["flag_undetermined"]:
@@ -413,6 +456,8 @@ def experiment_summary(
         "target_reached": (latest_share >= target_share) if (latest_share is not None and target_share) else None,
         "trend": [
             {"session_id": r["session_id"], "checkpoint": r["checkpoint"], "captured_at": r["captured_at"],
+             "hours_after_intervention": r["hours_after_intervention"],
+             "capture_time_verified": r["capture_time_verified"],
              "direct_share": r["metrics"]["direct_share"], "direct_share_ci95": r["metrics"]["direct_share_ci95"],
              "shares": r["metrics"]["shares"], "exposures_eligible": r["metrics"]["exposures_eligible"],
              "exposures_total": r["metrics"]["exposures_total"], "change_pp": r["vs_baseline"]["change_pp"]}

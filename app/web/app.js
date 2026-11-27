@@ -8,6 +8,18 @@ const STATUSES = ["recommended", "followed_account", "search_result", "undetermi
 const CHECKPOINTS = ["T0", "T2", "T3", "T4", "T5", "ADHOC"];
 
 // ---------- helpers ----------
+// Capture-time provenance (R6, D-027). Only "user" and "recording_metadata" are evidence of capture time.
+const CAPTURE_SOURCES = { user: "entered by you", recording_metadata: "from recording metadata",
+  session_created: "fallback: session creation time", import_time: "fallback: import time" };
+function captureNote(r) {
+  return r.capture_time_verified ? "" : `<br><span class="pill warn" title="Capture time is not from you or the recording metadata">unverified time${r.timezone_assumed_utc ? ", zone assumed UTC" : ""}</span>`;
+}
+function elapsedCell(p) {
+  if (!p.measured) return "";
+  if (p.actual_hours_after_intervention === null || p.actual_hours_after_intervention === undefined) return '<span class="muted">actual elapsed time unknown</span>';
+  const warn = p.captured_before_intervention ? " · before intervention!" : (p.capture_time_verified ? "" : " · unverified capture time");
+  return `actual ${p.actual_hours_after_intervention} h <span class="muted">(${p.hours_from_nominal >= 0 ? "+" : ""}${p.hours_from_nominal} h vs plan${warn})</span>`;
+}
 const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (x, d = 1) => (x === null || x === undefined ? "–" : `${(x * 100).toFixed(d)}%`);
 const pp = (x) => (x === null || x === undefined ? "–" : `${x > 0 ? "+" : ""}${x.toFixed(1)} pp`);
@@ -167,7 +179,7 @@ async function viewDetail(id) {
       <div class="card"><b>Time to first target recommendation</b>
         <p>${s.time_to_first_target.measurable ? `${s.time_to_first_target.hours_after_intervention ?? "–"} h after intervention · ${esc(s.time_to_first_target.checkpoint)} #${s.time_to_first_target.sequence_number} · ${s.time_to_first_target.eligible_exposures_before_first} eligible exposures before it` : esc(s.time_to_first_target.reason)}</p>
         <b>Persistence</b>
-        <table>${s.persistence.map((p) => `<tr><td>${p.checkpoint} (${p.horizon})</td><td>${p.measured ? pct(p.direct_share) : '<span class="muted">not measured</span>'}</td><td>${p.measured ? pp(p.change_pp) : ""}</td><td>${p.retention_of_T2_lift !== null && p.retention_of_T2_lift !== undefined ? `${Math.round(p.retention_of_T2_lift * 100)}% of T2 lift` : ""}</td></tr>`).join("")}</table>
+        <table>${s.persistence.map((p) => `<tr><td>${p.checkpoint} (planned ${p.horizon})</td><td>${elapsedCell(p)}</td><td>${p.measured ? pct(p.direct_share) : '<span class="muted">not measured</span>'}</td><td>${p.measured ? pp(p.change_pp) : ""}</td><td>${p.retention_of_T2_lift !== null && p.retention_of_T2_lift !== undefined ? `${Math.round(p.retention_of_T2_lift * 100)}% of T2 lift` : ""}</td></tr>`).join("")}</table>
       </div>
       <div class="card"><b>Strategist</b> <span class="muted">${esc(plan.strategist_version)}</span>
         <p><b>${esc(plan.headline)}</b></p>
@@ -183,7 +195,7 @@ async function viewDetail(id) {
     <div class="card table-wrap"><table>
       <tr><th>Checkpoint</th><th>Label</th><th>Captured</th><th>Method</th><th>Exposures</th><th>Direct</th><th>Status</th><th>Sample</th><th></th></tr>
       ${s.sessions.map((r) => { const ss = d.sessions.find((x) => x.session_id === r.session_id); return `<tr>
-        <td><b>${esc(r.checkpoint)}</b></td><td>${esc(r.label)}</td><td>${dt(r.captured_at)}</td><td>${esc(ss.capture_method)}</td>
+        <td><b>${esc(r.checkpoint)}</b></td><td>${esc(r.label)}</td><td>${dt(r.captured_at)}${captureNote(r)}${r.hours_after_intervention !== null && r.hours_after_intervention !== undefined && r.checkpoint !== "T0" ? `<br><span class="muted">${r.hours_after_intervention} h after intervention</span>` : ""}</td><td>${esc(ss.capture_method)}</td>
         <td>${r.metrics.exposures_eligible} / ${r.metrics.exposures_total}</td><td>${pct(r.metrics.direct_share)}</td><td>${esc(ss.status)}</td>
         <td>${sampleBadge(ss)}</td><td><a href="#/session/${r.session_id}">Review</a></td></tr>`; }).join("") || `<tr><td colspan="9" class="muted">No sessions yet. <a href="#/exp/${id}/import">Import the first baseline recording</a>.</td></tr>`}
     </table></div>
@@ -222,7 +234,7 @@ async function viewImport(id) {
       <div class="row">
         <label class="f">Checkpoint<select id="cp">${CHECKPOINTS.map((c) => `<option>${c}</option>`).join("")}</select></label>
         <label class="f grow">Label<input id="label" placeholder="e.g. Baseline A, evening"></label>
-        <label class="f">Captured at<input id="when" type="datetime-local"></label>
+        <label class="f" title="Your local time. Leave empty to use the recording's own creation time; without metadata the time is flagged as unverified.">Captured at (optional)<input id="when" type="datetime-local"></label>
       </div>
       <div class="row">
         <label class="f grow">Screen recording (MP4 / MOV)<input id="file" type="file" accept=".mp4,.mov,.m4v,video/mp4,video/quicktime"></label>
@@ -270,7 +282,7 @@ async function viewSession(sid) {
   $view.innerHTML = `
     ${demoBanner(e)}
     <div class="row"><h1>${esc(s.checkpoint)} · ${esc(s.label || s.session_id)}</h1><span class="grow"></span>${dataPill(e)}</div>
-    <p class="sub">${esc(e.experiment_id)} · ${dt(s.captured_at)} · ${esc(s.capture_method)} · ${d.observations.length} Reels · ${d.frame_count} frames · <span class="mono">${esc(s.session_id)}</span></p>
+    <p class="sub">${esc(e.experiment_id)} · captured ${dt(s.captured_at)} (${esc(CAPTURE_SOURCES[s.captured_at_source] || "source not recorded")})${s.imported_at ? ` · imported ${dt(s.imported_at)}` : ""} · ${esc(s.capture_method)} · ${d.observations.length} Reels · ${d.frame_count} frames · <span class="mono">${esc(s.session_id)}</span></p>
     <div class="card row">
       ${d.frame_count ? `<button id="cls-mock" class="primary">Classify (local mock)</button>
       <button id="cls-llm" ${st.external_providers_enabled ? "" : "disabled title='Set AMAS_ALLOW_EXTERNAL_PROVIDERS=true in .env'"}>Classify with vision LLM…</button>` : ""}
@@ -461,18 +473,21 @@ async function viewInterventions(id) {
   const [d, cat, plan] = await Promise.all([api(`/experiments/${id}`), api(`/experiments/${id}/actions`), api(`/experiments/${id}/plan`)]);
   const e = d.experiment;
   const actuator = e.is_demo ? "mock" : "manual";
+  // N1: show the same gate the API enforces (plan.intervention_gate), not just baseline readiness.
+  const gate = plan.intervention_gate || { open: true, problems: [] };
+  const baselineReady = !!(d.summary.baseline_readiness && d.summary.baseline_readiness.ready);
   $view.innerHTML = `${demoBanner(e)}
     <h1>Intervention log</h1>
     <p class="sub">Interventions on ${esc(cat.platform)} are performed by you, by hand. Automation: <b>${cat.supports_automation ? "available" : "not available (manual only)"}</b>.</p>
-    ${d.summary.baseline_readiness && !d.summary.baseline_readiness.ready ? `<div class="banner warn"><b>Baseline not ready.</b> ${d.summary.baseline_readiness.problems.map(esc).join(" ")} Planning an action now requires a recorded protocol deviation.</div>` : ""}
+    ${gateBanner(gate, baselineReady, id)}
     ${plan.recommended_actions.length ? `<div class="card"><b>Strategist suggestions</b><ul>${plan.recommended_actions.map((a) => `<li><b>${esc(a.title)}</b> (${a.priority}): ${esc(a.rationale)} <button class="small" data-plan="${esc(a.action_type)}" data-params='${esc(JSON.stringify(a.parameters))}'>Plan this</button></li>`).join("")}</ul></div>` : ""}
     <h2>Log a new action</h2>
     <div class="card grid" style="gap:10px">
       <div class="row"><label class="f">Action<select id="atype">${cat.actions.map((a) => `<option value="${esc(a.action_type)}">${esc(a.title)}${a.reserved_for ? " (reserved: " + esc(a.reserved_for) + ")" : ""}</option>`).join("")}</select></label>
         <label class="f grow">Description<input id="adesc" placeholder="What exactly will you do?"></label></div>
       <label class="f">Parameters (JSON)<input id="aparams" value='${esc(JSON.stringify(cat.actions[0]?.default_parameters || {}))}'></label>
-      ${d.summary.baseline_readiness && !d.summary.baseline_readiness.ready ? `<div class="row"><label><input type="checkbox" id="aoverride"> Plan despite the incomplete baseline (protocol deviation)</label><input class="grow" id="areason" placeholder="Reason, recorded with the action"></div>` : ""}
-      <div><button class="primary" id="aplan">Create ${actuator === "mock" ? "simulated" : "manual"} action</button></div>
+      ${gate.open ? "" : `<div class="row"><label><input type="checkbox" id="aoverride"> Plan despite the blocking items above (founder-approved protocol exception)</label><input class="grow" id="areason" placeholder="Reason (required), recorded with the action and the blocking items"></div>`}
+      <div><button class="primary" id="aplan" ${gate.open ? "" : "disabled"}>Create ${actuator === "mock" ? "simulated" : "manual"} action${gate.open ? "" : " as exception"}</button></div>
     </div>
     <h2>Log</h2>
     <div class="card">${d.interventions.map((a) => `
@@ -484,9 +499,19 @@ async function viewInterventions(id) {
       </div>`).join("") || `<p class="muted">Nothing logged yet.</p>`}</div>`;
   const sel = document.getElementById("atype");
   sel.onchange = () => { const a = cat.actions.find((x) => x.action_type === sel.value); document.getElementById("aparams").value = JSON.stringify(a.default_parameters); };
+  const ov = document.getElementById("aoverride"), reasonEl = document.getElementById("areason");
+  const exceptionReady = () => !!(ov && ov.checked && reasonEl && reasonEl.value.trim());
+  const syncCreate = () => {
+    if (gate.open) return;
+    const ok = exceptionReady();
+    document.getElementById("aplan").disabled = !ok;
+    $view.querySelectorAll("[data-plan]").forEach((b) => { b.disabled = !ok; });
+  };
+  if (ov) { ov.onchange = syncCreate; reasonEl.oninput = syncCreate; }
+  syncCreate();
   const create = async (type, params, desc) => {
-    const ov = document.getElementById("aoverride");
-    const extra = ov && ov.checked ? { override_baseline_check: true, override_reason: document.getElementById("areason").value } : {};
+    if (!gate.open && !exceptionReady()) return toast("Planning is blocked. Resolve the items above, or tick the exception box and give a reason.");
+    const extra = gate.open ? {} : { override_baseline_check: true, override_reason: reasonEl.value.trim() };
     try { await api(`/experiments/${id}/interventions`, { json: { action_type: type, parameters: params, description: desc, actuator, ...extra } }); viewInterventions(id); }
     catch (err) { toast(err.message); }
   };
@@ -502,6 +527,14 @@ async function viewInterventions(id) {
   };
   $view.querySelectorAll("[data-done]").forEach((b) => b.onclick = () => complete(b.dataset.done, false));
   $view.querySelectorAll("[data-skip]").forEach((b) => b.onclick = () => complete(b.dataset.skip, true));
+}
+
+function gateBanner(gate, baselineReady, id) {
+  if (gate.open) return "";
+  const title = baselineReady ? "Open review items block a T1 intervention." : "Baseline not ready.";
+  return `<div class="banner warn"><b>${title}</b> The API refuses to plan an action until these are resolved:
+    <ul>${gate.problems.map((p) => `<li>${esc(p)}</li>`).join("")}</ul>
+    Resolve them in the <a href="#/exp/${esc(id)}">experiment sessions</a>. A founder-approved exception needs the explicit checkbox and a reason below; both are stored with the action.</div>`;
 }
 
 async function viewProfiles() {
