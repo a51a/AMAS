@@ -185,3 +185,40 @@ UNKNOWN-in-denominator rule are unchanged. The existing recorded override remain
 Which T0 samples form the primary analysis baseline (pooled metrics still use all T0
 sessions) is an open founder decision raised in PR-003, not changed here.
 
+
+## D-026 · PATCH semantics and honest confidence for human corrections (R5, 2026-11-27)
+In `PATCH /api/observations/{id}` an omitted field is unchanged and an explicit `null` clears it.
+Only `topic_label`, `is_ad`, `caption_text`, `creator_handle` and `confidence` are clearable;
+`null` on `target_match`, `recommendation_status`, `hashtags` or `notes` is rejected (422).
+`is_ad: null` returns a Reel to "not identified" (still not a verified non-ad). Review status
+is human provenance and independent of confidence: a correction sets `confidence` to the
+reviewer's explicit value or to null, never to 1.0; an UNKNOWN label never carries a confidence
+(400 if one is sent). Manual entries likewise keep only a stated confidence. The machine's
+confidence stays in `machine_label_json`. Confidence is not an input to any metric, so the
+primary metric, denominator and taxonomy are unchanged.
+
+## D-027 · Timezone-aware capture time with recorded provenance (R6, 2026-11-27)
+New timestamps (`captured_at`, `observed_at`, `completed_at`, CLI `--captured-at`) must be
+ISO 8601 with an explicit offset; naive or malformed values are rejected and accepted values are
+stored in UTC. Schema v4 adds `observation_sessions.captured_at_source`, `imported_at` and
+`recording_created_at` additively; existing values are never rewritten. Capture time precedence:
+the owner's explicit value, then recording container metadata
+(`com.apple.quicktime.creationdate`, then `creation_time`; epoch/implausible or naive tags are
+ignored), then the session creation time flagged as `session_created`. Import time is recorded
+separately and is never used as capture time. Only `user` and `recording_metadata` count as a
+verified capture time; container creation time may mark the start or end of a recording, so it is
+provenance, not exact exposure time. Legacy stored values without an offset are read as UTC
+for computation and reported in warnings; legacy rows without a source show `not_recorded` and keep their value on
+re-import (the recording metadata is stored only in `recording_created_at`).
+Chronology sorts by instant, not by string. Post-intervention sessions and T3-T5 persistence
+report the actual hours after the first completed intervention, the difference from the nominal
+offset, whether the capture time is verified and whether the sample predates the intervention.
+A checkpoint name is a plan, not evidence of elapsed time. The metric formula is unchanged
+(`eval-v2`); no timing tolerance or sampling rule was added.
+
+## D-028 · Intervention UI shows the enforced gate (N1, 2026-11-27)
+`GET /plan` also returns `intervention_gate`, the same function the intervention API enforces.
+The intervention screen renders its problems (baseline readiness and, before T1, open review
+items in any checkpoint) and disables Create until the founder ticks an explicit exception box
+and gives a non-empty reason, which the API stores with the blocking problems. The API gate
+(409 without override, 400 without reason) is unchanged and remains authoritative.
