@@ -177,7 +177,7 @@ async function viewDetail(id) {
     <div class="card">${distributionChart(s)}</div>
     <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));margin-top:12px">
       <div class="card"><b>Time to first target recommendation</b>
-        <p>${s.time_to_first_target.measurable ? `${s.time_to_first_target.hours_after_intervention ?? "–"} h after intervention · ${esc(s.time_to_first_target.checkpoint)} #${s.time_to_first_target.sequence_number} · ${s.time_to_first_target.eligible_exposures_before_first} eligible exposures before it` : esc(s.time_to_first_target.reason)}</p>
+        <p>${s.time_to_first_target.measurable ? `${s.time_to_first_target.hours_after_intervention ?? "–"} h after intervention · ${esc(s.time_to_first_target.checkpoint)} #${s.time_to_first_target.sequence_number} · ${s.time_to_first_target.eligible_exposures_before_first} eligible exposures before it${s.time_to_first_target.time_verified ? "" : ` <span class="pill warn" title="Time source: ${esc(s.time_to_first_target.exposure_time_source)}">unverified time${s.time_to_first_target.exposure_timezone_assumed_utc || s.time_to_first_target.intervention_timezone_assumed_utc ? ", zone assumed UTC" : ""}</span>`}` : esc(s.time_to_first_target.reason)}</p>
         <b>Persistence</b>
         <table>${s.persistence.map((p) => `<tr><td>${p.checkpoint} (planned ${p.horizon})</td><td>${elapsedCell(p)}</td><td>${p.measured ? pct(p.direct_share) : '<span class="muted">not measured</span>'}</td><td>${p.measured ? pp(p.change_pp) : ""}</td><td>${p.retention_of_T2_lift !== null && p.retention_of_T2_lift !== undefined ? `${Math.round(p.retention_of_T2_lift * 100)}% of T2 lift` : ""}</td></tr>`).join("")}</table>
       </div>

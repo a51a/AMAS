@@ -8,7 +8,8 @@ handoff is on `codex/pr5-independent-review`. ROADMAP.md remains the shared back
 
 | Date | Report | Use |
 |---|---|---|
-| 2026-11-27 | [R5, R6 and N1 fixes, Claude Code cloud run](2026-11-27/CLAUDE-R5-R6-N1.md) | Latest implementation: 132 tests passed (synthetic); awaits independent Codex verification; R7–R9 open |
+| 2026-11-27 | [V1 and V2 fixes, Claude Code cloud run](2026-11-27/CLAUDE-V1-V2.md) | Latest implementation: 141 tests passed (synthetic); fixes Codex PR #7 review findings V1/V2 (`PR-007.md` on `codex/pr7-independent-review`); awaits verification |
+| 2026-11-27 | [R5, R6 and N1 fixes, Claude Code cloud run](2026-11-27/CLAUDE-R5-R6-N1.md) | R5/R6/N1 implementation merged as PR #7; Codex review found V1/V2; R7–R9 open |
 | 2026-11-27 | [PR #5 independent verification and next tasks](2026-11-27/PR-005.md) | Latest independent review: 98 tests passed; C1–C4 verified; N1 UI follow-up; R5/R6 task |
 | 2026-11-26 | [C1–C4 fixes, Claude Code cloud run](2026-11-26/CLAUDE-C1-C4.md) | Historical implementation report for merged PR #5; independent verification above |
 | 2026-11-26 | [PR #3 independent review and next tasks](2026-11-26/PR-003.md) | Historical C1–C4 findings and their reproductions; disposition is in PR-005 |
