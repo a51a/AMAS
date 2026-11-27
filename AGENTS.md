@@ -21,8 +21,8 @@ Do not infer decisions or access from previous chats.
 
 Prove the Observe → Compare → Strategize → Act → Measure → Repeat loop on EXP-001.
 Do not expand into SaaS, multi-platform automation, or a marketplace before measurement
-is trustworthy. PRs #1–#5 are merged; the latest independent review and next engineering
-handoff are in `testing-reports/2026-11-27/PR-005.md`. `ROADMAP.md` is the canonical shared status/backlog;
+is trustworthy. PRs #1–#7 are merged; the latest independent review and next engineering
+handoff are in `testing-reports/2026-11-27/PR-007.md`. `ROADMAP.md` is the canonical shared status/backlog;
 reuse it rather than creating a competing state file.
 
 ## Collaboration and changes
