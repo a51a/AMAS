@@ -1,29 +1,26 @@
 # Roadmap
 
-## Shared status · 2026-11-26
+## Shared status · 2026-11-27
 
 - Claude Code works in the cloud from GitHub; Codex keeps private research in local lab/AMAS.
   [Testing report index](testing-reports/README.md) is the shared entry point.
-- PR #1 was independently reviewed at `b086496` / merged tree `e4bca44`. Original findings
-  and acceptance criteria remain in [PR-001](testing-reports/2026-11-26/PR-001.md).
-- PRs #2 (handoff) and #3 (R1–R4 implementation) are merged. Codex independently tested
-  main `48e44ee`, including fix head `71d1149`: **67 passed, 0 skipped** on macOS,
-  Python 3.14.6 with FFmpeg. This is not evidence of Instagram classifier accuracy.
-- Latest independent review and cloud task: [PR-003](testing-reports/2026-11-26/PR-003.md),
-  branch `codex/pr3-independent-review`. C1/C2 are P1 follow-ups (profile edits lost on
-  startup; stale deviations bypass new readiness problems); C3/C4 are P2 (merge history
-  lost on classification; zero eligible baseline unlocks intervention). R5–R9 remain open.
-- C1–C4 fixes from Claude Code cloud: branch `claude/c1-c4-review-followups`, PR to
-  `codex/pr3-independent-review`, not merged. 98 passed on synthetic inputs; see
-  [CLAUDE-C1-C4](testing-reports/2026-11-26/CLAUDE-C1-C4.md). After merge, previously accepted
-  T0 samples must be accepted again (acceptance is now bound to a data revision).
-- BASELINE-001 / EXP-001 / T0 remains provisional. Source/export consistency checks passed;
-  startup migration was tested on a separate local database copy with observation data
-  preserved. Original DB and recording were not migrated or altered in this review.
-- No human baseline validation, intervention or post-intervention result is claimed.
-  All baseline images stay on-device; detailed evidence/backups remain Git-ignored.
-- No product code was changed in this follow-up review. New fixes require an implementation
-  PR and founder approval for merge; historical handoff/report documents remain intact.
+- PRs #1–#5 are merged. Codex independently verified main `1f12f98`, including PR #5 fix
+  head `06193ed`: **98 passed, 0 skipped** on macOS / Python 3.14.6 with FFmpeg.
+- **C1–C4 verified** in original reproductions and the regression suite. R1/R2/R4 original
+  symptoms remain fixed. Latest evidence/task: [PR-005](testing-reports/2026-11-27/PR-005.md),
+  branch `codex/pr5-independent-review`. One P2 UI/API parity follow-up N1 remains;
+  it does not bypass backend protection. R5–R9 remain open.
+- Schema v1→v3 and v2→v3 were independently checked on separate local database copies:
+  existing observation data preserved, source hashes unchanged, reopening consistent.
+  The original database has not been migrated in this review. Previously accepted samples
+  require renewed acceptance once migrated because schema v3 tracks a data revision.
+- BASELINE-001 / EXP-001 / T0 remains provisional. Source/export checks pass, but this is
+  not human boundary/topic validation. Images stay on-device and all private artifacts
+  remain Git-ignored. No real intervention or post-intervention result is claimed.
+- This review changes reports/research tooling only. No product implementation changes,
+  automatic merges, real-data edits, external classification or deployment are performed.
+- Original acceptance criteria remain in [PR-001](testing-reports/2026-11-26/PR-001.md);
+  the C1–C4 history remains in [PR-003](testing-reports/2026-11-26/PR-003.md).
 
 ## Sprint 1 (this release): local MVP
 Observer (recording import, frames, segmentation, mock + pluggable vision classifier, manual review),
@@ -31,15 +28,17 @@ Taste Engine (versioned profiles, EXP-001), Evaluation Engine, rules-based Strat
 Manual/Mock actuators, Instagram manual adapter, Control Center, CSV/JSON export.
 
 ## Next
-1. **Close follow-up measurement findings**: C1–C4 from
-   [PR-003](testing-reports/2026-11-26/PR-003.md) are fixed in a pending PR; review, merge and
-   independently recheck it. Do not treat merged code or a green suite as experiment readiness.
-2. **Make real corrections/imports reliable**: R5/R6 (nullable fields, confidence, capture
-   time and timezone validation), then R7/R8 (snapshot deletion and profile-version provenance).
-3. **Accept a defensible baseline before T1**: establish the human boundary reference (R9),
-   review labels/eligibility locally and complete the two 50-exposure T0 samples. Decide
-   primary analysis membership before pooling pilot/provisional and accepted samples;
-   current metrics pool all T0 sessions. Keep real data provisional until verified.
+1. **Correction/import workflow (Claude cloud)**: R5/R6 (nullable fields, honest confidence,
+   capture time and timezone/chronology validation) plus N1 (show the actual intervention
+   gate in the UI). Scope and regression cases are in PR-005. C1–C4 do not need another
+   implementation cycle unless new evidence demonstrates a regression.
+2. **Reproducibility (Claude cloud)**: R7/R8 (derived snapshot deletion and recording the
+   profile version used for classification). Keep original recordings and user-owned exports.
+3. **Accept a defensible baseline before T1 (local)**: establish human boundary reference
+   R9, review labels/eligibility on-device, complete the two 50-exposure T0 samples, and
+   decide primary analysis membership. Current metrics pool all T0 sessions, including
+   pilots/provisional samples; acceptance does not exclude them. Keep data provisional
+   until validated, and record founder-approved deviations explicitly.
 4. **Faster labelling**: keyboard-driven review queue, bulk label, label propagation across
    near-duplicate fingerprints, inter-rater check (two labelling passes on a subset).
 5. **Classifier evaluation**: hold-out set of human labels, confusion matrix per classifier version,
