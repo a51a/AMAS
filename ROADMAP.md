@@ -22,6 +22,9 @@
 - **R5/R6/N1 implemented (Claude cloud, 2026-11-27), not yet independently verified:**
   [CLAUDE-R5-R6-N1](testing-reports/2026-11-27/CLAUDE-R5-R6-N1.md), D-026–D-028, schema v4.
   132 synthetic tests passed on Linux / Python 3.12.3. Awaits Codex review; R7–R9 stay open.
+- **V1/V2 (Codex PR #7 review) implemented, not yet independently verified:** confirmed UNKNOWN
+  has no exposed confidence; time-to-first-target reports its time source and any assumed UTC
+  zone. [CLAUDE-V1-V2](testing-reports/2026-11-27/CLAUDE-V1-V2.md), D-029, 141 synthetic tests passed.
 - Original acceptance criteria remain in [PR-001](testing-reports/2026-11-26/PR-001.md);
   the C1–C4 history remains in [PR-003](testing-reports/2026-11-26/PR-003.md).
 
@@ -31,9 +34,8 @@ Taste Engine (versioned profiles, EXP-001), Evaluation Engine, rules-based Strat
 Manual/Mock actuators, Instagram manual adapter, Control Center, CSV/JSON export.
 
 ## Next
-1. **Correction/import workflow (Codex verification)**: R5/R6/N1 are implemented on the
-   R5/R6/N1 PR; independently verify them, including the minimal `pr1_review` adaptation and
-   capture-time metadata on a real QuickTime recording on-device. C1–C4 do not need another
+1. **Correction/import workflow (Codex verification)**: R5/R6/N1 merged (PR #7); V1/V2
+   follow-up is on its own PR. Verify V1/V2, then treat R5/R6 as closed if confirmed. C1–C4 do not need another
    implementation cycle unless new evidence demonstrates a regression.
 2. **Reproducibility (Claude cloud)**: R7/R8 (derived snapshot deletion and recording the
    profile version used for classification). Keep original recordings and user-owned exports.
