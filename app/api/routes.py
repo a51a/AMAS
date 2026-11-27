@@ -136,7 +136,7 @@ def export(experiment_id: str, request: Request, format: str = "json"):
 # ---------------- sessions ----------------
 @router.post("/experiments/{experiment_id}/sessions")
 def create_session(experiment_id: str, body: SessionCreate, request: Request):
-    return _nf(repo(request).create_session, experiment_id, checkpoint=body.checkpoint.value,
+    return _nf(repo(request).create_session, experiment_id, checkpoint=body.checkpoint.value,  # captured_at validated
                capture_method=body.capture_method.value, label=body.label, captured_at=body.captured_at,
                notes=body.notes)
 
@@ -161,7 +161,8 @@ def delete_recording(session_id: str, request: Request):
 
 
 @router.post("/sessions/{session_id}/recording")
-def upload_recording(session_id: str, request: Request, file: UploadFile = File(...)):
+def upload_recording(session_id: str, request: Request, file: UploadFile = File(...),
+                     captured_at: str | None = Form(None)):
     r = repo(request)
     _nf(r.get_session, session_id)
     suffix = Path(file.filename or "").suffix.lower()
@@ -172,7 +173,7 @@ def upload_recording(session_id: str, request: Request, file: UploadFile = File(
         tmp_path = Path(tmp.name)
     try:
         return pipeline.import_recording(r, settings(request), session_id, tmp_path,
-                                         original_name=file.filename, move=True)
+                                         original_name=file.filename, move=True, captured_at=captured_at)
     except (MediaError, ValueError) as e:
         raise HTTPException(400, str(e))
     finally:
@@ -181,6 +182,7 @@ def upload_recording(session_id: str, request: Request, file: UploadFile = File(
 
 class PathImport(BaseModel):
     path: str
+    captured_at: str | None = None  # timezone-aware; overrides recording metadata (D-027)
 
 
 @router.post("/sessions/{session_id}/recording/from-path")
@@ -190,7 +192,8 @@ def import_from_path(session_id: str, body: PathImport, request: Request):
     if not p.is_file():
         raise HTTPException(400, f"File not found: {p}")
     try:
-        return pipeline.import_recording(repo(request), settings(request), session_id, p)
+        return pipeline.import_recording(repo(request), settings(request), session_id, p,
+                                         captured_at=body.captured_at)
     except (MediaError, ValueError) as e:
         raise HTTPException(400, str(e))
 
@@ -284,7 +287,11 @@ def add_manual_bulk(session_id: str, body: list[ManualObservation], request: Req
 def patch_observation(observation_id: str, body: ObservationPatch, request: Request):
     r = repo(request)
     _nf(r.get_observation, observation_id)
-    return pipeline.apply_correction(r, observation_id, body.model_dump(mode="json", exclude_unset=True))
+    try:
+        # exclude_unset keeps the distinction between an omitted field (unchanged) and explicit null (clear).
+        return pipeline.apply_correction(r, observation_id, body.model_dump(mode="json", exclude_unset=True))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.delete("/observations/{observation_id}")
@@ -346,6 +353,7 @@ def action_catalog(experiment_id: str, request: Request):
 def create_intervention(experiment_id: str, body: InterventionCreate, request: Request):
     r = repo(request)
     exp = _nf(r.get_experiment, experiment_id)
+    # Server-side gate (R4/C2/C4); the UI shows the same result via /plan (N1) but this check is authoritative.
     gate = intervention_gate(compute_summary(r, experiment_id), r.list_interventions(experiment_id))
     parameters = dict(body.parameters)
     if not gate["open"]:
@@ -361,7 +369,7 @@ def create_intervention(experiment_id: str, body: InterventionCreate, request: R
         values = act.plan(exp, body.action_type, parameters, body.description)
     except ActuatorUnavailable as e:
         raise HTTPException(403, str(e))
-    except KeyError as e:
+    except (KeyError, ValueError) as e:
         raise HTTPException(400, str(e))
     return r.add_intervention(experiment_id, values)
 

@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from app.adapters.base import PlatformAdapter
-from app.models.schemas import CHECKPOINT_OFFSETS_HOURS
+from app.models.schemas import CHECKPOINT_OFFSETS_HOURS, parse_stored_timestamp
 
 STRATEGIST_VERSION = "rules-v2"
 
@@ -71,7 +71,10 @@ def next_checkpoint(summary: dict, interventions: list[dict]) -> dict | None:
                         f"{ready['required_reels']} Reels)."}
     if not completed:
         return {"checkpoint": "T1", "due_at": None, "note": "Perform and log the intervention."}
-    anchor = min(datetime.fromisoformat(a["completed_at"]) for a in completed)
+    times = [t for t in (parse_stored_timestamp(a["completed_at"])[0] for a in completed) if t]
+    if not times:
+        return {"checkpoint": "T2", "due_at": None, "note": "Intervention completion time is not parseable; fix it."}
+    anchor = min(times)
     for cp, hours in CHECKPOINT_OFFSETS_HOURS.items():
         if cp not in done:
             return {"checkpoint": cp, "due_at": (anchor + timedelta(hours=hours)).isoformat(timespec="minutes"),

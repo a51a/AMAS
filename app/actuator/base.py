@@ -10,7 +10,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 
 from app.adapters.base import PlatformAdapter
-from app.models.schemas import ActionStatus, Authorization, utcnow
+from app.models.schemas import ActionStatus, Authorization, normalize_timestamp, utcnow
 
 
 class ActuatorUnavailable(RuntimeError):
@@ -72,7 +72,8 @@ class MockActuator(Actuator):
             "actuator": self.name,
             "status": ActionStatus.SIMULATED.value,
             "authorization": Authorization.SIMULATED.value,
-            "completed_at": parameters.get("completed_at") or utcnow(),
+            # Demo-only; still timezone-validated so summaries never mix naive and aware times (D-027).
+            "completed_at": normalize_timestamp(parameters.get("completed_at"), field="completed_at") or utcnow(),
         }
 
 

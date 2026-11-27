@@ -9,7 +9,8 @@ import shutil
 from pathlib import Path
 
 from app.config import Settings
-from app.models.schemas import RecommendationStatus, ReviewStatus, TargetMatch, utcnow
+from app.models.schemas import (PATCH_NULLABLE_FIELDS, CaptureTimeSource, RecommendationStatus, ReviewStatus,
+                                TargetMatch, normalize_timestamp, utcnow)
 from app.observer import media
 from app.observer.classifiers.base import ClassificationInput, Classifier
 from app.observer.classifiers.mock import MockClassifier
@@ -52,10 +53,39 @@ def get_classifier(name: str, settings: Settings) -> Classifier:
 
 # ---------------------------------------------------------------- import
 
+def resolve_capture_time(session: dict, recording_created_at: str | None,
+                         captured_at: str | None = None) -> dict:
+    """Decide a session's capture time at import (R6, D-027). Import time is never capture time.
+
+    Precedence: an explicit `captured_at` from the owner, then a capture time the owner entered earlier,
+    then the recording's container creation time, then the existing fallback (session creation time), which
+    stays flagged as unverified. Legacy rows without a recorded source keep their value; only an explicit
+    `captured_at` replaces it (the recording metadata is still stored in `recording_created_at`).
+    """
+    explicit = normalize_timestamp(captured_at, field="captured_at")
+    if explicit:
+        return {"captured_at": explicit, "captured_at_source": CaptureTimeSource.USER.value}
+    current = session.get("captured_at_source")
+    if current is None or current == CaptureTimeSource.USER.value:
+        return {}  # owner-entered, or a legacy row (pre-v4) whose origin is unknown: never rewritten silently
+    if recording_created_at:
+        return {"captured_at": recording_created_at, "captured_at_source": CaptureTimeSource.RECORDING_METADATA.value}
+    if current == CaptureTimeSource.RECORDING_METADATA.value:
+        # A replacement recording without metadata must not inherit the previous file's capture time.
+        return {"captured_at": session.get("created_at") or utcnow(),
+                "captured_at_source": CaptureTimeSource.SESSION_CREATED.value}
+    return {}
+
+
 def import_recording(repo: Repository, settings: Settings, session_id: str, source: Path,
-                     *, original_name: str | None = None, move: bool = False) -> dict:
-    """Copy a user-made screen recording into local storage, extract frames and auto-segment it."""
+                     *, original_name: str | None = None, move: bool = False,
+                     captured_at: str | None = None) -> dict:
+    """Copy a user-made screen recording into local storage, extract frames and auto-segment it.
+
+    `captured_at` (timezone-aware) overrides the recording metadata; see `resolve_capture_time`.
+    """
     source = Path(source)
+    explicit = normalize_timestamp(captured_at, field="captured_at")  # reject bad input before copying
     suffix = Path(original_name or source.name).suffix.lower()
     if suffix not in ALLOWED_SUFFIXES:
         raise ValueError(f"Unsupported file type '{suffix}'. Use MP4 or MOV.")
@@ -66,10 +96,14 @@ def import_recording(repo: Repository, settings: Settings, session_id: str, sour
     if source.resolve() != dest.resolve():
         (shutil.move if move else shutil.copy2)(str(source), str(dest))
     digest = media.sha256_file(dest)
+    created = (info.get("creation_time") or {}).get("value")
     repo.update_session(session_id, {
         "recording_ref": str(dest),
         "recording_sha256": digest,
         "recording_duration_seconds": info["duration_seconds"],
+        "recording_created_at": created,
+        "imported_at": utcnow(),
+        **resolve_capture_time(repo.get_session(session_id), created, explicit),
         "status": "imported",
     })
     extract_and_segment(repo, settings, session_id)
@@ -337,21 +371,42 @@ def bulk_set_eligibility(repo: Repository, session_id: str, status: str, *, only
 
 
 def apply_correction(repo: Repository, observation_id: str, patch: dict) -> dict:
-    """Human review. Topic changes mark the row 'corrected'; a plain confirm marks it 'confirmed'."""
+    """Human review (R5, D-026).
+
+    `patch` holds only the fields the client sent (exclude_unset): an omitted field is unchanged, an explicit
+    None clears a nullable field (`is_ad` back to "not identified", caption/topic/creator to null).
+    Topic changes mark the row 'corrected'; a plain confirm marks it 'confirmed'. Review status is human
+    provenance and is independent of confidence: a correction does not invent certainty. The new confidence
+    is the reviewer's explicit value if given, otherwise null; an UNKNOWN label never carries a confidence.
+    The machine's own confidence stays in `machine_label_json`.
+    """
     o = repo.get_observation(observation_id)
+    patch = dict(patch)
     confirm = patch.pop("confirm", False)
-    values = {k: v for k, v in patch.items() if v is not None}
-    label_changed = any(k in values and values[k] != o.get(k) for k in ("target_match", "topic_label"))
-    if "recommendation_status" in values:
+    bad = [k for k, v in patch.items() if v is None and k not in PATCH_NULLABLE_FIELDS]
+    if bad:
+        raise ValueError(f"These fields cannot be cleared: {', '.join(sorted(bad))}")
+    explicit_confidence = "confidence" in patch
+    confidence = patch.pop("confidence", None)
+    values = {k: v for k, v in patch.items() if v != o.get(k)}
+    label_changed = any(k in values for k in ("target_match", "topic_label"))
+    resulting_match = values.get("target_match", o.get("target_match"))
+    if explicit_confidence and confidence is not None and resulting_match == TargetMatch.UNKNOWN:
+        raise ValueError("An UNKNOWN label cannot carry a confidence; omit confidence or send null.")
+    if "recommendation_status" in patch:
         # An explicit per-Reel human ruling is authoritative and resolves any eligibility conflict.
+        values["recommendation_status"] = patch["recommendation_status"]
         values["eligibility_source"] = ELIGIBILITY_HUMAN
         values["eligibility_conflict"] = False
     if label_changed:
         values["review_status"] = ReviewStatus.CORRECTED.value
-        values["confidence"] = 1.0
+        values["confidence"] = None if resulting_match == TargetMatch.UNKNOWN else confidence
         values["classification_evidence"] = (o.get("classification_evidence") or []) + ["Corrected by human reviewer."]
         if not o.get("classifier_version"):
             values["classifier_version"] = "human-manual"
-    elif confirm:
-        values["review_status"] = ReviewStatus.CONFIRMED.value
+    else:
+        if explicit_confidence:
+            values["confidence"] = None if resulting_match == TargetMatch.UNKNOWN else confidence
+        if confirm:
+            values["review_status"] = ReviewStatus.CONFIRMED.value
     return repo.update_observation(observation_id, values)

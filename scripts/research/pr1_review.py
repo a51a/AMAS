@@ -72,11 +72,24 @@ def main():
                                                    "recommendation_status": "recommended"})
         findings["two_single_item_baselines_plan"] = compute_plan(repo, "EXP-001")["status"]
 
-        s = repo.create_session("EXP-001", checkpoint="T2", capture_method="synthetic", captured_at="2026-11-26T12:00:00")
+        # Adapted in the R5/R6/N1 implementation PR: naive entry values are now refused, which used to
+        # abort this probe before it printed. Record the refusal, then store the naive value directly to keep
+        # probing the legacy-row path the original R6 reproduction exercised.
+        try:
+            s = repo.create_session("EXP-001", checkpoint="T2", capture_method="synthetic",
+                                    captured_at="2026-11-26T12:00:00")
+            findings["naive_capture_entry"] = "accepted"
+        except ValueError as e:
+            findings["naive_capture_entry"] = f"rejected: {e}"
+            s = repo.create_session("EXP-001", checkpoint="T2", capture_method="synthetic")
+            repo.update_session(s["session_id"], {"captured_at": "2026-11-26T12:00:00"})
         repo.add_intervention("EXP-001", dict(action_type="custom", actuator="manual", status="completed",
                                               completed_at="2026-11-26T11:00:00+00:00"))
         try:
-            compute_summary(repo, "EXP-001")
+            summ = compute_summary(repo, "EXP-001")
+            row = next(r for r in summ["sessions"] if r["session_id"] == s["session_id"])
+            findings["naive_capture_timestamp"] = {k: row.get(k) for k in (
+                "captured_at", "hours_after_intervention", "timezone_assumed_utc", "capture_time_verified")}
         except Exception as e:
             findings["naive_capture_timestamp"] = f"{type(e).__name__}: {e}"
         repo.db.close()

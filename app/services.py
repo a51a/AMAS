@@ -9,7 +9,7 @@ from typing import Any
 from app.adapters.registry import adapter_for
 from app.evaluator.metrics import METRIC_VERSION, experiment_summary, sample_readiness, sample_revision
 from app.models.schemas import utcnow
-from app.strategist.rules import build_plan
+from app.strategist.rules import build_plan, intervention_gate
 from app.storage.repository import Repository
 
 EXPORT_COLUMNS = [
@@ -18,7 +18,7 @@ EXPORT_COLUMNS = [
     "classification_evidence", "caption_text", "hashtags", "creator_handle", "recommendation_status", "is_ad",
     "content_fingerprint", "classifier_version", "review_status", "segmentation_method", "is_demo", "notes",
     "followed_signal", "eligibility_source", "eligibility_conflict", "boundary_history", "sample_status",
-    "deviation_note",
+    "deviation_note", "captured_at", "captured_at_source", "imported_at",
 ]
 
 
@@ -72,9 +72,11 @@ def unaccept_sample(repo: Repository, session_id: str) -> dict:
 
 
 def compute_plan(repo: Repository, experiment_id: str) -> dict:
+    """Strategist plan plus the exact intervention gate the API enforces (N1), so the UI cannot disagree."""
     exp = repo.get_experiment(experiment_id)
-    return build_plan(exp, compute_summary(repo, experiment_id), repo.list_interventions(experiment_id),
-                      adapter_for(exp["platform"]))
+    summary, interventions = compute_summary(repo, experiment_id), repo.list_interventions(experiment_id)
+    plan = build_plan(exp, summary, interventions, adapter_for(exp["platform"]))
+    return {**plan, "intervention_gate": intervention_gate(summary, interventions)}
 
 
 def export_json(repo: Repository, experiment_id: str) -> dict[str, Any]:
@@ -102,6 +104,8 @@ def export_csv(repo: Repository, experiment_id: str) -> str:
         row["checkpoint"] = sessions[o["session_id"]]["checkpoint"]
         row["sample_status"] = sessions[o["session_id"]].get("sample_status")
         row["deviation_note"] = sessions[o["session_id"]].get("deviation_note")
+        for k in ("captured_at", "captured_at_source", "imported_at"):  # session capture provenance (D-027)
+            row[k] = sessions[o["session_id"]].get(k)
         row["classification_evidence"] = " | ".join(o.get("classification_evidence") or [])
         row["hashtags"] = " ".join(o.get("hashtags") or [])
         row["boundary_history"] = json.dumps(o.get("boundary_history") or [], ensure_ascii=False)

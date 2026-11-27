@@ -9,6 +9,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 THUMB = 16  # 16x16 grayscale thumbnails for transition detection and aHash
@@ -38,10 +39,42 @@ def probe(path: Path) -> dict:
     duration = float(info.get("format", {}).get("duration") or video.get("duration") or 0)
     return {
         "duration_seconds": duration,
+        "creation_time": container_creation_time(info),
         "width": int(video.get("width") or 0),
         "height": int(video.get("height") or 0),
         "codec": video.get("codec_name"),
     }
+
+
+# Preferred first: QuickTime's creationdate carries the local offset; creation_time is usually UTC.
+CREATION_TAGS = ("com.apple.quicktime.creationdate", "creation_time")
+EARLIEST_PLAUSIBLE_YEAR = 2005  # encoders write 1904/1970 epochs when no clock was set
+
+
+def container_creation_time(info: dict) -> dict | None:
+    """Recording creation time from container/stream tags (R6, D-027).
+
+    Returns {"value": UTC ISO string, "tag": tag name, "raw": original} or None when absent, naive,
+    malformed or implausible. It is the encoder's creation time, which may mark the start or the end of
+    a screen recording; callers must keep its provenance.
+    """
+    tag_sets = [info.get("format", {}).get("tags") or {}]
+    tag_sets += [s.get("tags") or {} for s in info.get("streams", [])]
+    for tag in CREATION_TAGS:
+        for tags in tag_sets:
+            raw = next((v for k, v in tags.items() if k.lower() == tag), None)
+            if not raw:
+                continue
+            try:
+                dt = datetime.fromisoformat(str(raw).strip().replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if dt.tzinfo is None or dt.year < EARLIEST_PLAUSIBLE_YEAR:
+                continue
+            if dt > datetime.now(timezone.utc) + timedelta(days=1):
+                continue
+            return {"value": dt.astimezone(timezone.utc).isoformat(), "tag": tag, "raw": str(raw)}
+    return None
 
 
 def sha256_file(path: Path) -> str:

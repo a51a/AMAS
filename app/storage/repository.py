@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from app.models.schemas import (
+    CaptureTimeSource,
     ExperimentCreate,
     InterestProfile,
     ManualObservation,
     ReviewStatus,
+    normalize_timestamp,
     utcnow,
 )
 from app.storage.db import Database
@@ -152,9 +154,19 @@ class Repository:
 
     # ---------------- sessions ----------------
     def create_session(self, experiment_id: str, *, checkpoint: str, capture_method: str,
-                       label: str = "", captured_at: str | None = None, notes: str = "") -> dict:
+                       label: str = "", captured_at: str | None = None, notes: str = "",
+                       captured_at_source: str | None = None) -> dict:
+        """Create a session. `captured_at` must be timezone-aware (R6, D-027); it is stored in UTC.
+
+        Without it the creation time is used and recorded as the `session_created` fallback, which is not
+        evidence of when the feed was seen; a later recording import may replace it with recording metadata.
+        """
         exp = self.get_experiment(experiment_id)
         sid = new_id("ses")
+        now = utcnow()
+        captured = normalize_timestamp(captured_at, field="captured_at")
+        source = captured_at_source or (CaptureTimeSource.USER.value if captured else
+                                        CaptureTimeSource.SESSION_CREATED.value)
         self.db.insert(
             "observation_sessions",
             {
@@ -163,12 +175,13 @@ class Repository:
                 "checkpoint": checkpoint,
                 "label": label,
                 "capture_method": capture_method,
-                "captured_at": captured_at or utcnow(),
+                "captured_at": captured or now,
+                "captured_at_source": source,
                 "platform": exp["platform"],
                 "surface": exp["surface"],
                 "notes": notes,
                 "is_demo": exp["is_demo"],
-                "created_at": utcnow(),
+                "created_at": now,
             },
         )
         return self.get_session(sid)
@@ -271,8 +284,10 @@ class Repository:
             "review_status": ReviewStatus.CONFIRMED.value if m.target_match.value != "unknown" else ReviewStatus.NEEDS_REVIEW.value,
             "segmentation_method": "manual_entry",
         }
-        if values.get("confidence") is None and m.target_match.value != "unknown":
-            values["confidence"] = 1.0
+        # R5 (D-026): a human label is reviewed, not certain. Keep only an explicitly stated confidence, and
+        # never attach one to UNKNOWN.
+        if m.target_match.value == "unknown":
+            values["confidence"] = None
         return self.add_observation(session_id, values)
 
     def get_observation(self, observation_id: str, missing_ok: bool = False) -> dict | None:
